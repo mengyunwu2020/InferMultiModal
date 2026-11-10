@@ -1,0 +1,416 @@
+library(tibble)
+library(dplyr)
+library(digest)
+library(data.table)
+library(here)
+
+read_local_clinical <- function(study_dir) {
+  pat_file <- file.path(study_dir, "data_clinical_patient.txt")
+  sam_file <- file.path(study_dir, "data_clinical_sample.txt")
+
+  read_clean <- function(f) {
+    lines <- readLines(f)
+    hdr <- which(!grepl("^#", lines))[1]
+    read.table(text = lines[hdr:length(lines)], sep = "\t", header = TRUE,
+               check.names = FALSE, stringsAsFactors = FALSE, quote = "", comment.char = "")
+  }
+
+  cli_pat <- read_clean(pat_file)
+  cli_sam <- read_clean(sam_file)
+
+  merged_cli <- merge(cli_sam, cli_pat, by = "PATIENT_ID", all.x = TRUE)
+  return(as.data.frame(merged_cli))
+}
+
+read_local_assays <- function(study_dir) {
+  exp.all <- list()
+
+  files_map <- list(
+    mrna_seq_v2_rsem_zscores_ref_all_samples = "data_mrna_seq_v2_rsem_zscores_ref_all_samples.txt",
+    methylation_hm450 = "data_methylation_hm450.txt",
+    linear_cna = "data_linear_cna.txt",
+    rppa_zscores = "data_rppa_zscores.txt"
+  )
+
+  for (name in names(files_map)) {
+    fname <- files_map[[name]]
+    fpath <- file.path(study_dir, fname)
+    if (!file.exists(fpath) && name == "linear_cna") {
+      fpath <- file.path(study_dir, "data_cna.txt")
+    }
+
+    if (file.exists(fpath)) {
+      message(paste("Loading:", fname))
+      raw_df <- fread(fpath, sep = "\t", header = TRUE, check.names = FALSE,
+                      data.table = FALSE, quote = "", fill = TRUE)
+
+      feat_col <- if ("Hugo_Symbol" %in% colnames(raw_df)) "Hugo_Symbol" else colnames(raw_df)[1]
+
+      valid_idx <- which(!is.na(raw_df[[feat_col]]) & raw_df[[feat_col]] != "")
+      raw_df <- raw_df[valid_idx, ]
+
+      rownames(raw_df) <- make.unique(raw_df[[feat_col]])
+
+      drop_cols <- intersect(colnames(raw_df), c("Hugo_Symbol", "Entrez_Gene_Id", "GENE_ID", "Composite.Element.REF"))
+      sample_cols <- setdiff(colnames(raw_df), drop_cols)
+
+      mat <- as.matrix(raw_df[, sample_cols])
+      exp.all[[name]] <- mat
+    }
+  }
+  return(exp.all)
+}
+
+luad_dir <- here("Data", "RealData", "RawData", "luad_tcga")
+lusc_dir <- here("Data", "RealData", "RawData", "lusc_tcga")
+
+aa <- read_local_clinical(luad_dir)
+aa <- aa[, c("PATIENT_ID", setdiff(colnames(aa), "PATIENT_ID"))]
+
+tmp <- unlist(aa[, 1])
+tmp2 <- unlist(aa[, 'SAMPLE_TYPE'])
+bb <- unlist(which(!(is.na(tmp2))))
+aa <- aa[bb, ]
+
+for (i in 1:dim(aa)[1]) {
+  if (tmp2[i] == 'Primary') {
+    hm <- '01'
+  } else if (tmp2[i] == 'Metastasis') {
+    hm <- '06'
+  }
+  aa[i, 1] <- paste(tmp[i], hm, sep = '-')
+}
+
+aa <- as.data.frame(aa)
+is_duplicated <- duplicated(aa)
+aa <- aa[!is_duplicated, ]
+
+yydata <- unlist(aa[, "FEV1_PERCENT_REF_PREBRONCHOLIATOR"])
+yydata <- as.numeric(yydata)
+yydata <- cbind(aa[, 1], yydata)
+
+yydata <- yydata[!is.na(yydata[, 2]), ]
+rownames(yydata) <- yydata[, 1]
+
+exp.all <- read_local_assays(luad_dir)
+
+ex <- t(exp.all$mrna_seq_v2_rsem_zscores_ref_all_samples)
+ex <- ex[rowSums(is.finite(ex)) != 0, , drop = FALSE]
+ex <- ex[, colSums(is.finite(ex)) != 0, drop = FALSE]
+ex_df <- as.data.frame(ex, check.names = FALSE)
+ex_df <- cbind(patientId = rownames(ex_df), ex_df)
+
+colnames(yydata) <- c('patientId', 'FEV1_PERCENT_REF_PREBRONCHOLIATOR')
+ind <- intersect(rownames(ex), rownames(yydata))
+
+dataend1 <- merge(yydata, ex_df, by = "patientId", all = TRUE)
+dataend1 <- dataend1[!duplicated(dataend1[, 1]), ]
+rownames(dataend1) <- dataend1[, 1]
+tmp <- which(is.element(dataend1[, 1], ind))
+dataend1 <- dataend1[tmp, ]
+dataend1 <- dataend1[, -1]
+dataend1[] <- lapply(dataend1, as.numeric)
+dataend1 <- dataend1[rowSums(is.na(dataend1)) == 0, , drop = FALSE]
+
+methylation <- t(exp.all[["methylation_hm450"]])
+methylation <- methylation[rowSums(is.finite(methylation)) != 0, , drop = FALSE]
+methylation <- methylation[, colSums(is.finite(methylation)) != 0, drop = FALSE]
+meth_df <- as.data.frame(methylation, check.names = FALSE)
+meth_df <- cbind(patientId = rownames(meth_df), meth_df)
+
+dataend2 <- merge(yydata, meth_df, by = "patientId", all = TRUE)
+tmp <- intersect(rownames(methylation), rownames(yydata))
+bs <- which(is.element(dataend2[, 1], tmp))
+dataend2 <- dataend2[bs, ]
+rownames(dataend2) <- dataend2[, 1]
+
+cols_name_2 <- colnames(dataend2)[-1]
+dataend21 <- as.data.frame(lapply(dataend2[, -1], as.numeric))
+colnames(dataend21) <- cols_name_2
+tmp <- which(is.na(colSums(dataend21)))
+if (length(tmp) == 0) {
+  dataend2 <- cbind(dataend2[, 1, drop = FALSE], dataend21)
+} else {
+  dataend2 <- cbind(dataend2[, 1, drop = FALSE], dataend21[, -tmp, drop = FALSE])
+}
+colnames(dataend2)[1] <- 'patientId'
+
+dataend2 <- dataend2[!duplicated(dataend2[, 1]), ]
+rownames(dataend2) <- dataend2[, 1]
+dataend2 <- dataend2[, -1]
+dataend2 <- dataend2[rowSums(is.na(dataend2)) == 0, , drop = FALSE]
+
+cna <- t(exp.all[["linear_cna"]])
+cna <- cna[rowSums(is.finite(cna)) != 0, , drop = FALSE]
+cna <- cna[, colSums(is.finite(cna)) != 0, drop = FALSE]
+cna_df <- as.data.frame(cna, check.names = FALSE)
+cna_df <- cbind(patientId = rownames(cna_df), cna_df)
+
+dataend3 <- merge(yydata, cna_df, by = "patientId", all = TRUE)
+tmp <- intersect(rownames(cna), rownames(yydata))
+bs <- which(is.element(dataend3[, 1], tmp))
+dataend3 <- dataend3[bs, ]
+rownames(dataend3) <- dataend3[, 1]
+
+cols_name_3 <- colnames(dataend3)[-1]
+dataend31 <- as.data.frame(lapply(dataend3[, -1], as.numeric))
+colnames(dataend31) <- cols_name_3
+tmp <- which(is.na(colSums(dataend31)))
+if (length(tmp) == 0) {
+  dataend3 <- cbind(dataend3[, 1, drop = FALSE], dataend31)
+} else {
+  dataend3 <- cbind(dataend3[, 1, drop = FALSE], dataend31[, -tmp, drop = FALSE])
+}
+colnames(dataend3)[1] <- 'patientId'
+
+dataend3 <- dataend3[!duplicated(dataend3[, 1]), ]
+rownames(dataend3) <- dataend3[, 1]
+dataend3 <- dataend3[, -1]
+dataend3 <- dataend3[rowSums(is.na(dataend3)) == 0, , drop = FALSE]
+
+rppa_zscores <- t(exp.all[["rppa_zscores"]])
+rppa_zscores <- rppa_zscores[rowSums(is.finite(rppa_zscores)) != 0, , drop = FALSE]
+rppa_zscores <- rppa_zscores[, colSums(is.finite(rppa_zscores)) != 0, drop = FALSE]
+rppa_df <- as.data.frame(rppa_zscores, check.names = FALSE)
+rppa_df <- cbind(patientId = rownames(rppa_df), rppa_df)
+
+dataend4 <- merge(yydata, rppa_df, by = "patientId", all = TRUE)
+tmp <- intersect(rownames(rppa_zscores), rownames(yydata))
+bs <- which(dataend4[, 1] %in% tmp)
+dataend4 <- dataend4[bs, ]
+rownames(dataend4) <- dataend4[, 1]
+
+cols_name_4 <- colnames(dataend4)[-1]
+dataend41 <- as.data.frame(lapply(dataend4[, -1], as.numeric))
+colnames(dataend41) <- cols_name_4
+tmp <- which(is.na(colSums(dataend41)))
+if (length(tmp) == 0) {
+  dataend4 <- cbind(dataend4[, 1, drop = FALSE], dataend41)
+} else {
+  dataend4 <- cbind(dataend4[, 1, drop = FALSE], dataend41[, -tmp, drop = FALSE])
+}
+colnames(dataend4)[1] <- 'patientId'
+
+dataend4 <- dataend4[!duplicated(dataend4[, 1]), ]
+rownames(dataend4) <- dataend4[, 1]
+dataend4 <- dataend4[, -1]
+dataend4 <- dataend4[rowSums(is.na(dataend4)) == 0, , drop = FALSE]
+
+tmp <- intersect(rownames(dataend1), rownames(dataend2))
+tmp <- intersect(tmp, rownames(dataend3))
+tmp <- intersect(tmp, rownames(dataend4))
+
+data_luad <- list(ex = dataend1, methylation = dataend2, cna = dataend3, rppa_zscores = dataend4, id = tmp)
+
+aa <- read_local_clinical(lusc_dir)
+aa <- aa[, c("PATIENT_ID", setdiff(colnames(aa), "PATIENT_ID"))]
+
+tmp <- unlist(aa[, 1])
+tmp2 <- unlist(aa[, 'SAMPLE_TYPE'])
+bb <- unlist(which(!(is.na(tmp2))))
+aa <- aa[bb, ]
+
+for (i in 1:dim(aa)[1]) {
+  if (tmp2[i] == 'Primary') {
+    hm <- '01'
+  } else if (tmp2[i] == 'Metastasis') {
+    hm <- '06'
+  }
+  aa[i, 1] <- paste(tmp[i], hm, sep = '-')
+}
+
+aa <- as.data.frame(aa)
+is_duplicated <- duplicated(aa)
+aa <- aa[!is_duplicated, ]
+
+yydata <- unlist(aa[, "FEV1_PERCENT_REF_PREBRONCHOLIATOR"])
+yydata <- as.numeric(yydata)
+yydata <- cbind(aa[, 1], yydata)
+
+yydata <- yydata[!is.na(yydata[, 2]), ]
+rownames(yydata) <- yydata[, 1]
+
+exp.all <- read_local_assays(lusc_dir)
+
+ex <- t(exp.all$mrna_seq_v2_rsem_zscores_ref_all_samples)
+ex <- ex[rowSums(is.finite(ex)) != 0, , drop = FALSE]
+ex <- ex[, colSums(is.finite(ex)) != 0, drop = FALSE]
+ex_df <- as.data.frame(ex, check.names = FALSE)
+ex_df <- cbind(patientId = rownames(ex_df), ex_df)
+
+colnames(yydata) <- c('patientId', 'FEV1_PERCENT_REF_PREBRONCHOLIATOR')
+ind <- intersect(rownames(ex), rownames(yydata))
+
+dataend1 <- merge(yydata, ex_df, by = "patientId", all = TRUE)
+dataend1 <- dataend1[!duplicated(dataend1[, 1]), ]
+rownames(dataend1) <- dataend1[, 1]
+tmp <- which(is.element(dataend1[, 1], ind))
+dataend1 <- dataend1[tmp, ]
+dataend1 <- dataend1[, -1]
+dataend1[] <- lapply(dataend1, as.numeric)
+dataend1 <- dataend1[rowSums(is.na(dataend1)) == 0, , drop = FALSE]
+
+tmp <- which(colnames(dataend1) == 'OR4K2')
+if (length(tmp) > 0) {
+  dataend1 <- dataend1[, -tmp, drop = FALSE]
+}
+
+methylation <- t(exp.all[["methylation_hm450"]])
+methylation <- methylation[rowSums(is.finite(methylation)) != 0, , drop = FALSE]
+methylation <- methylation[, colSums(is.finite(methylation)) != 0, drop = FALSE]
+meth_df <- as.data.frame(methylation, check.names = FALSE)
+meth_df <- cbind(patientId = rownames(meth_df), meth_df)
+
+dataend2 <- merge(yydata, meth_df, by = "patientId", all = TRUE)
+tmp <- intersect(rownames(methylation), rownames(yydata))
+bs <- which(is.element(dataend2[, 1], tmp))
+dataend2 <- dataend2[bs, ]
+rownames(dataend2) <- dataend2[, 1]
+
+cols_name_2 <- colnames(dataend2)[-1]
+dataend21 <- as.data.frame(lapply(dataend2[, -1], as.numeric))
+colnames(dataend21) <- cols_name_2
+tmp <- which(is.na(colSums(dataend21)))
+if (length(tmp) == 0) {
+  dataend2 <- cbind(dataend2[, 1, drop = FALSE], dataend21)
+} else {
+  dataend2 <- cbind(dataend2[, 1, drop = FALSE], dataend21[, -tmp, drop = FALSE])
+}
+colnames(dataend2)[1] <- 'patientId'
+
+dataend2 <- dataend2[!duplicated(dataend2[, 1]), ]
+rownames(dataend2) <- dataend2[, 1]
+dataend2 <- dataend2[, -1]
+dataend2 <- dataend2[rowSums(is.na(dataend2)) == 0, , drop = FALSE]
+
+cna <- t(exp.all[["linear_cna"]])
+cna <- cna[rowSums(is.finite(cna)) != 0, , drop = FALSE]
+cna <- cna[, colSums(is.finite(cna)) != 0, drop = FALSE]
+cna_df <- as.data.frame(cna, check.names = FALSE)
+cna_df <- cbind(patientId = rownames(cna_df), cna_df)
+
+dataend3 <- merge(yydata, cna_df, by = "patientId", all = TRUE)
+tmp <- intersect(rownames(cna), rownames(yydata))
+bs <- which(is.element(dataend3[, 1], tmp))
+dataend3 <- dataend3[bs, ]
+rownames(dataend3) <- dataend3[, 1]
+
+cols_name_3 <- colnames(dataend3)[-1]
+dataend31 <- as.data.frame(lapply(dataend3[, -1], as.numeric))
+colnames(dataend31) <- cols_name_3
+tmp <- which(is.na(colSums(dataend31)))
+if (length(tmp) == 0) {
+  dataend3 <- cbind(dataend3[, 1, drop = FALSE], dataend31)
+} else {
+  dataend3 <- cbind(dataend3[, 1, drop = FALSE], dataend31[, -tmp, drop = FALSE])
+}
+colnames(dataend3)[1] <- 'patientId'
+
+dataend3 <- dataend3[!duplicated(dataend3[, 1]), ]
+rownames(dataend3) <- dataend3[, 1]
+dataend3 <- dataend3[, -1]
+dataend3 <- dataend3[rowSums(is.na(dataend3)) == 0, , drop = FALSE]
+
+rppa_zscores <- t(exp.all[["rppa_zscores"]])
+rppa_zscores <- rppa_zscores[rowSums(is.finite(rppa_zscores)) != 0, , drop = FALSE]
+rppa_zscores <- rppa_zscores[, colSums(is.finite(rppa_zscores)) != 0, drop = FALSE]
+rppa_df <- as.data.frame(rppa_zscores, check.names = FALSE)
+rppa_df <- cbind(patientId = rownames(rppa_df), rppa_df)
+
+dataend4 <- merge(yydata, rppa_df, by = "patientId", all = TRUE)
+tmp <- intersect(rownames(rppa_zscores), rownames(yydata))
+bs <- which(dataend4[, 1] %in% tmp)
+dataend4 <- dataend4[bs, ]
+rownames(dataend4) <- dataend4[, 1]
+
+cols_name_4 <- colnames(dataend4)[-1]
+dataend41 <- as.data.frame(lapply(dataend4[, -1], as.numeric))
+colnames(dataend41) <- cols_name_4
+tmp <- which(is.na(colSums(dataend41)))
+if (length(tmp) == 0) {
+  dataend4 <- cbind(dataend4[, 1, drop = FALSE], dataend41)
+} else {
+  dataend4 <- cbind(dataend4[, 1, drop = FALSE], dataend41[, -tmp, drop = FALSE])
+}
+colnames(dataend4)[1] <- 'patientId'
+
+dataend4 <- dataend4[!duplicated(dataend4[, 1]), ]
+rownames(dataend4) <- dataend4[, 1]
+dataend4 <- dataend4[, -1]
+dataend4 <- dataend4[rowSums(is.na(dataend4)) == 0, , drop = FALSE]
+
+tmp <- intersect(rownames(dataend1), rownames(dataend2))
+tmp <- intersect(tmp, rownames(dataend3))
+tmp <- intersect(tmp, rownames(dataend4))
+
+data_lusc <- list(ex = dataend1, methylation = dataend2, cna = dataend3, rppa_zscores = dataend4, id = tmp)
+
+datacombine <- list()
+hh <- union(data_luad[[5]], data_lusc[[5]])
+
+for (ii in 1:4) {
+  tmp <- bind_rows(data_luad[[ii]], data_lusc[[ii]])
+  rownames(tmp) <- c(rownames(data_luad[[ii]]), rownames(data_lusc[[ii]]))
+
+  cols_1 <- which(!is.na(colSums(tmp)))
+  ind <- which(is.element(rownames(tmp), hh))
+  datacombine[[ii]] <- tmp[ind, cols_1, drop = FALSE]
+}
+datacombine[[5]] <- hh
+
+data_var <- list()
+name_gene <- list()
+
+for (ii in 1:3) {
+  yk <- unlist(datacombine[[ii]][, 1])
+  X <- datacombine[[ii]][, -1, drop = FALSE]
+
+  if (ii == 3) {
+    X <- X[, !duplicated(as.list(X)), drop = FALSE]
+  }
+
+  pvals <- rep(1e+100, dim(X)[2])
+  names(pvals) <- colnames(X)
+  for (op in 1:dim(X)[2]) {
+    fit <- lm(yk ~ X[, op])
+    tmp_coef <- summary(fit)$coefficients
+    if (dim(tmp_coef)[1] > 1) {
+      pvals[op] <- tmp_coef[2, 4]
+    }
+  }
+
+  selected <- names(pvals[order(pvals)[1:300]])
+  X_sortByVar_ge <- X[, selected, drop = FALSE]
+
+  if (ii == 3) {
+    short_symbols <- sub("\\..*", "", colnames(X_sortByVar_ge))
+    colnames(X_sortByVar_ge) <- make.unique(short_symbols)
+  }
+
+  name_gene[[ii]] <- colnames(X_sortByVar_ge)
+  data_var[[ii]] <- cbind(datacombine[[ii]][, 1, drop = FALSE], X_sortByVar_ge)
+  colnames(data_var[[ii]])[1] <- 'FEV1_PERCENT_REF_PREBRONCHOLIATOR'
+
+  if (ii == 1) {
+    datadf <- cbind(patientId = rownames(data_var[[ii]]), data_var[[ii]])
+  } else {
+    pp <- cbind(patientId = rownames(data_var[[ii]]), data_var[[ii]])
+    datadf <- merge(datadf, pp, by = c("patientId", "FEV1_PERCENT_REF_PREBRONCHOLIATOR"), all = TRUE)
+  }
+}
+
+ii <- 4
+rppa_data <- datacombine[[ii]][, -1, drop = FALSE]
+name_gene[[ii]] <- colnames(rppa_data)
+
+pp <- cbind(patientId = rownames(datacombine[[ii]]), datacombine[[ii]])
+datadf <- merge(datadf, pp, by = c("patientId", "FEV1_PERCENT_REF_PREBRONCHOLIATOR"), all = TRUE)
+
+tmp <- which(is.element(datadf$patientId, datacombine[[5]]))
+lung_df <- datadf[tmp, ]
+rownames(lung_df) <- lung_df$patientId
+lung_df <- lung_df[, -which(colnames(lung_df) == "patientId")]
+
+dir.create(here("Data", "RealData", "ProcessedData"), recursive = TRUE, showWarnings = FALSE)
+save(name_gene, file = here("realdata", "Results","name_gene.RData"))
+save(lung_df, file = here("Data", "RealData", "ProcessedData", "lung_data.RData"))

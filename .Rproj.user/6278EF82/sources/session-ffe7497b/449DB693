@@ -1,0 +1,26 @@
+{
+    "id": "449DB693",
+    "path": "~/Desktop/JASA Review/code_and_data/Data/RealData/ProcessedData/processed_procedure.R",
+    "project_path": "Data/RealData/ProcessedData/processed_procedure.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1794310929979.0,
+    "source_on_save": false,
+    "relative_order": 22,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "63,24",
+        "scrollLine": "1"
+    },
+    "folds": "6|44|22|0|\n24|42|61|0|\n",
+    "lastKnownWriteTime": 1794312000,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1794312000527,
+    "read_only": false,
+    "read_only_alternatives": []
+}

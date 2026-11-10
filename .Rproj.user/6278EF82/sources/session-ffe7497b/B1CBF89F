@@ -1,0 +1,26 @@
+{
+    "id": "B1CBF89F",
+    "path": "~/Desktop/JASA Review/code_and_data/simulation/Replication_code/NoCommon/nocommon_betatest.R",
+    "project_path": "simulation/Replication_code/NoCommon/nocommon_betatest.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1794309121579.0,
+    "source_on_save": false,
+    "relative_order": 17,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "37,21",
+        "scrollLine": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1794193659,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1794193659,
+    "read_only": false,
+    "read_only_alternatives": []
+}

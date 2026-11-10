@@ -1,0 +1,337 @@
+#simulation for Test 2-3
+#p: 200 300 400 500
+
+source("~/Nutstore Files/我的坚果云/科研/2025/factor_reg/yale服务器/factor_final/function/beta_li.R")
+devtools::load_all("/Users/qinxing/Nutstore Files/我的坚果云/科研/2025/factor_reg/yale服务器/factor_final/function/InferMultiModal")
+source("/Users/qinxing/Nutstore Files/我的坚果云/JASA Review/joint_func.R", echo=TRUE)
+# Get command line arguments
+args <- commandArgs(trailingOnly = TRUE)
+args=c(1200,0,2,1,1)
+# Number of variables
+p <- as.numeric(args[1])
+library(metap)
+
+# Settings for generating factors F
+# 1 = independent factors
+rate_F <- as.numeric(args[2])
+choose_F=1
+
+# Settings for generating error structure V
+# 1 = independent errors
+# 2 = banded errors -- Band (0.2)
+# 3 = moderate mixing errors -- AR (0.2)
+# 4 = block mixing errors -- Block (0.5)
+# 5 = strong mixing errors -- AR (0.5)
+choose_V <- as.numeric(args[3])
+
+# Settings for noise distribution
+# 1 = Gaussian noise -- N(0,1)
+# 2 = Uniform noise -- Uniform [-sqrt(3),sqrt(3)]
+choose_noise <- as.numeric(args[4])
+
+
+
+# Settings for loading distribution
+# 1 = Gaussian N(0,1)
+# 2 = Uniform [-sqrt(3),sqrt(3)]
+choose_B <- as.numeric(args[5])
+
+
+
+# Display the chosen settings
+cat("Running simulation with settings:\n")
+cat(" - p =", p, "\n")
+cat(" - rate_F =", rate_F, "(1 = independent, 2 = strong mixing)\n")
+cat(" - choose_V =", choose_V, "(1 = independent, 2 = Band (0.2), 3 = AR (0.2), 4 = Block (0.5), 5 =  AR (0.5))\n")
+cat(" - choose_noise =", choose_noise, "(1 = Gaussian, 2 = Uniform)\n")
+cat(" - choose_B =", choose_B, "(1 = Gaussian, 2 = Uniform)\n")
+
+
+n=300 #number of observations
+folder_path <- paste0("/Users/qinxing/Nutstore Files/我的坚果云/JASA Review/simulation/setting_nonoise/gammatest/case_p", args[1],"_n",n,"_F", args[2], "_V", args[3], "_noise", args[4], "_B", args[5])
+
+
+# 检查是否存在，不存在则创建
+if (!dir.exists(folder_path)) {
+  dir.create(folder_path, recursive = TRUE)
+}
+# 设置为当前工作目录
+setwd(folder_path)
+
+
+#--------------Load package-------------
+library("SIS")
+library("MASS")
+library(GrFA)
+library(ncvreg)
+library(Matrix)
+library(glmnet)
+library(ACAT)
+library(metap)
+
+library(harmonicmeanp)
+
+#------------- Main codes -----------------------
+
+#-----------Basic Settings----------------
+# n=300 #number of observations
+set.seed(1)
+K=4
+r_f=c(2,rep(2,K)) #number of factors
+r_all=sum(r_f)
+pm=rep(p/K,K)
+
+#-------------Compute the critical value-------------
+# quant_chisq<-c()
+# for (q in 1:10){
+#   boostrap<-c()
+#   for(j in 1:500){
+#     boostrap<-c(boostrap,rchisq(1,2)) #######
+#   }
+#   quant_chisq<-c(quant_chisq,quantile(boostrap,0.95))
+# }
+# c_alpha<-mean(quant_chisq)
+c_alpha=rep(0,5)
+for(ii in 1:5){
+
+  c_alpha[ii]<-qchisq(0.95,df=r_f[ii])
+}
+
+if(choose_V==2){
+  ## v2
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .2
+    top_mat[i+1, i] <- .2
+  }
+}else if(choose_V==3){
+  ## v3
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.2^abs(i-j)
+    }
+  }
+}else if(choose_V==4){
+  ## v4
+  top_mat_block<-matrix(nrow=p/K,ncol=p/K) #block covariance matrix
+  for (i in c(1:p/K)){
+    for (j in c(1:p/K)){
+      top_mat_block[i,j]=0.5^abs(i-j)
+    }
+  }
+  top_mat<-as.matrix(bdiag(top_mat_block,top_mat_block))
+  top_mat<-as.matrix(bdiag(top_mat,top_mat_block))
+  top_mat<-as.matrix(bdiag(top_mat,top_mat_block))
+
+}else if(choose_V==5){
+  ## v5
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.5^abs(i-j)
+    }
+  }
+}
+
+
+
+
+beta=c(rep(1,2),rep(0,pm[1]-2),rep(1,2),rep(0,pm[2]-2),rep(1,2),rep(0,pm[3]-2),rep(1,2),rep(0,pm[4]-2)) #generate true beta
+
+
+
+if(choose_B==1){
+  B_c<-matrix(rnorm(p*r_f[1],sd=1),nrow=p) #generate common factor loading or using gaussian.
+}else{
+  B_c<-matrix(runif(p*r_f[1],-sqrt(3),sqrt(3)),nrow=p) #generate common factor loading or using gaussian.
+}
+
+B=B_c
+B_s<-list()
+
+
+if(choose_B==1){
+  for(k in 1:K){
+    B_s[[k]]<-matrix(rnorm(pm[k]*r_f[k+1],mean = 0),nrow=pm[k]) #generate weak factor loading or using gaussian.
+  }
+}else{
+  for(k in 1:K){
+    B_s[[k]]<-matrix(runif(pm[k]*r_f[k+1],(-sqrt(3)),(sqrt(3))),nrow=pm[k])
+  }
+}
+
+block_diag <- as.matrix(bdiag(B_s[[1]], B_s[[2]]))
+block_diag <- as.matrix(bdiag(block_diag, B_s[[3]]))
+block_diag <- as.matrix(bdiag(block_diag, B_s[[4]]))
+
+B=cbind(B_c,as.matrix(block_diag))
+
+
+
+
+
+
+ratio1=0.9
+
+#-----------Record the size or power of test when $m$ takes 6 values------------#
+mat1<-NULL   #(K+1)\times 4*the number of m 6
+idx<-NULL
+idx2<-NULL
+idx3<-NULL
+for (m in rate_F){
+  #record p-values for every replication  3\times 4 matrix
+  
+  gamma1=  c(rep(m/10,r_all))
+  isis1<-NULL
+  isis2=NULL
+  isis3<-NULL
+  isis4=NULL
+  isis5=NULL
+  sigma_isis<-c()
+  sigma_sis<-c()
+  
+  
+  res=NULL
+  res1=res2=res3=res4=res5=res6=res7=res8=res9=res10= rrhat1=NULL
+  for (i in 1:500){ #1000 replications
+    t1=Sys.time()
+    set.seed(i)
+    if (choose_F==1){
+      F<-matrix(rnorm(n*r_all),nrow=n) #generate factor
+    }else{
+      F_start=rnorm(r_all)
+      F_origin=F_start
+      for (t in c(1:200)){
+        F_start=Phi%*%F_origin+rnorm(r_all)
+        F_origin=F_start
+      }
+      F<-matrix(nrow=n,ncol=r_all) #factor
+      for (t in c(1:n)){
+        F_start=Phi%*%F_origin+rnorm(r_all)###notice
+        F_origin=F_start
+        F[t,]<-F_start
+      }
+    }
+    
+    
+    
+    if(choose_V==1){
+      V<-matrix(rnorm(n*p),nrow=n)
+    }else{
+      V<-mvrnorm(n, rep(0,p),top_mat) #generate idiosyncratic component
+    }
+    
+    X=F%*%t(B)+V #design matrix
+    Y2=F%*%gamma1+V%*%beta+rnorm(n,0,.8)  
+     
+    factor_res1=NULL
+    factor_res1$loading_G=B_c
+    factor_res1$loading_F=as.matrix(block_diag)
+    factor_res1$Ghat=F[,1:2]
+    factor_res1$Fhat=list()
+    rtmp=3
+    for(k in 1:K){
+      
+      factor_res1$Fhat[[k]]=F[,(rtmp):(rtmp+1)]
+      rtmp=rtmp+2
+    }
+    factor_res1$residual=list()
+    ptmp=1
+    for(k in 1:K){
+      
+      factor_res1$residual[[k]]=V[,ptmp:(ptmp+pm[k]-1)]
+      ptmp=ptmp+pm[k]
+    }
+    
+    
+    
+    
+    
+    ss=1
+    XX=list()
+    for(k in 1:K){
+      XX[[k]]=X[,ss:(ss+pm[k]-1)]
+      ss=ss+pm[k]
+    }
+    
+    #---------oracle-based gammatest with true factor/loading-----------
+    # gres=gammatest(XX,Y2,K,ratio1=0.9,ratio2=0.6,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE,lambda.seq=NULL,r_f=r_f,alpha=0.05,type="BIC3",factor_res=factor_res1)#specific
+    # gres2=gammatest(XX,Y2,K,ratio1=0.9,ratio2=0.52,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE,lambda.seq=NULL,r_f=r_f,alpha=0.05,type="BIC3",factor_res=factor_res1)#common
+    # res=rbind(res,gres[1:(K+1)]<0.05)
+    # res1=rbind(res1,gres2[1:(K+1)]<0.05)
+    # write.csv(res,paste0("true_gammares_",m,"ratio1_0.9_ratio2_0.6.csv"))
+    # write.csv(res1,paste0("true_gammares_",m,"ratio1_0.9_ratio2_0.52.csv"))
+    # 
+    # #---------oracle-based gammatest with true factor numbers-----------
+    # gres=gammatest(XX,Y2,K,ratio1=0.9,ratio2=0.6,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE,lambda.seq=NULL,r_f=r_f,alpha=0.05,type="BIC3",factor_res=NULL)#specific
+    # gres2=gammatest(XX,Y2,K,ratio1=0.9,ratio2=0.52,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE,lambda.seq=NULL,r_f=r_f,alpha=0.05,type="BIC3",factor_res=NULL)#common
+    # res2=rbind(res2,gres[1:(K+1)]<0.05)
+    # res3=rbind(res3,gres2[1:(K+1)]<0.05)
+    # write.csv(res2,paste0("r_true_gammares_",m,"ratio1_0.9_ratio2_0.6.csv"))
+    # write.csv(res3,paste0("r_true_gammares_",m,"ratio1_0.9_ratio2_0.52.csv"))
+    # 
+    # #---------joint betatest with r updating-----------
+    # # gres= gtest_joint(XX,Y2,K,ratio1=0.9,ratio2=0.6,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL,r_f=r_f,alpha=0.05,factor_res=NULL,lambda=seq(.1,0.01,length.out=10),r_update = TRUE,lam_in_iteration=FALSE)
+    # # gres2= gtest_joint(XX,Y2,K,ratio1=0.9,ratio2=0.52,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL,r_f=r_f,alpha=0.05,factor_res=NULL,lambda=seq(.1,0.01,length.out=10),r_update = TRUE,lam_in_iteration=FALSE)
+    # # res4=rbind(res4,gres<0.05)
+    # # res5=rbind(res5,gres2<0.05)
+    # # write.csv(res4,paste0("jointadjust_gammares_",m,"ratio1_0.9_ratio2_0.6.csv"))
+    # # write.csv(res5,paste0("jointadjust_gammares_",m,"ratio1_0.9_ratio2_0.52.csv"))
+    # 
+    # #---------joint betatest with r fixed using ours-----------
+    # gres= gtest_joint(XX,Y2,K,ratio1=0.9,ratio2=0.6,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL,r_f=r_f,alpha=0.05,factor_res=NULL,lambda=seq(.1,0.01,length.out=10),r_update =TRUE,lam_in_iteration=TRUE)
+    # gres2= gtest_joint(XX,Y2,K,ratio1=0.9,ratio2=0.52,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL,r_f=r_f,alpha=0.05,factor_res=NULL,lambda=seq(.1,0.01,length.out=10),r_update =TRUE,lam_in_iteration=TRUE)
+    # res6=rbind(res6,gres<0.05)
+    # res7=rbind(res7,gres2<0.05)
+    # write.csv(res6,paste0("jointadjust_gammares_fixr_",m,"ratio1_0.9_ratio2_0.6.csv"))
+    # write.csv(res7,paste0("jointadjust_gammares_fixr_",m,"ratio1_0.9_ratio2_0.52.csv"))
+    
+    #-----------------Li0--------------
+    # reli=li_estimate_f1(X,XX,K,n,p,Y2)
+    # f_hat_li=reli$hatf_all
+    # lam=c(0.3,0.01,0.1,0.05,0.005)
+    # resfu=rep(0,K)
+    # ss=1
+    # for(k in 1:K){
+    #   resfu[k]=li_betam(Y2,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[1])
+    #   ss=ss+pm[k]
+    # }
+    # id_li=resfu
+    #
+    #
+    # res8=rbind(res8,id_li)
+    #
+    # write.csv(res8,paste0("li_",m,".csv"))
+    
+    #---------using ours-----------
+    gres=gammatest(XX,Y2,K,ratio1=0.8,ratio2=0.52,rmax=10,method='gap',weight=TRUE,lambda.seq=NULL,r_f=r_f,alpha=0.05,type="IC3",factor_res=NULL)#specific
+    gres2=gammatest(XX,Y2,K,ratio1=0.8,ratio2=0.55,rmax=10,method='gap',weight=TRUE,lambda.seq=NULL,r_f=r_f,alpha=0.05,type="IC3",factor_res=NULL)#common
+    res9=rbind(res9,gres[1:(K+1)]<0.05)
+    res10=rbind(res10,gres2[1:(K+1)]<0.05)
+    rrhat1=rbind(rrhat1,gres[-c(1:(K+1))])
+    
+    write.csv(rrhat1,paste0("ours_",m,"rrhat.csv"))
+    write.csv(res9,paste0("ours_",m,"ratio1_0.9_ratio2_0.6.csv"))
+    write.csv(res10,paste0("ours_",m,"ratio1_0.9_ratio2_0.52.csv"))
+    t2=Sys.time()
+    print(t2-t1)
+  }
+  
+  # idx3<-cbind(idx3,colMeans(res8))
+  
+  # write.csv(idx3,paste0("idxres3_",m,"_li.csv"))
+  
+  # tmp=cbind(colMeans(res),colMeans(res2),colMeans(res4),colMeans(res6),colMeans(res9))
+  # idx<-cbind(idx,tmp)
+  
+  
+  # tmp=cbind(colMeans(res1),colMeans(res3),colMeans(res5),colMeans(res7),colMeans(res10))
+  # idx2<-cbind(idx2,tmp)
+  
+  # write.csv(idx,paste0("idxres_",m,"ratio1_0.9_ratio2_0.6.csv"))
+  
+  # write.csv(idx2,paste0("idxres2_",m,"ratio1_0.9_ratio2_0.52.csv"))
+}
+
+

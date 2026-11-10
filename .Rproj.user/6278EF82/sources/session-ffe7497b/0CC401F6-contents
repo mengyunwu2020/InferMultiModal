@@ -1,0 +1,222 @@
+library(zoo)
+library(tidyverse)
+library(ggh4x)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(here)
+#-----Figure S10-----
+
+df <- read.csv(here::here("simulation","Results","estimationcsv","estimation_joint_oracle.csv"))
+
+
+v_labels <- c("1" = "V1", "2" = "V2", "3" = "V3")
+df_long <- df  %>%
+  pivot_longer(
+    cols = c(Proposed, Joint, oracle_based, oracle_r_based),
+    names_to = "Method",
+    values_to = "Value"
+  ) %>%
+  filter(!is.na(Value))
+
+for (p_val in 1200) {
+  df_p <- df_long %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(noise)
+
+  for (i in 1:nrow(nb_combos)) {
+    noise_val <- nb_combos$noise[i]
+    df_sub <- df_p %>% filter(noise == noise_val)
+
+    df_sub <- df_sub %>%
+      group_by(B, V) %>%
+      mutate(
+        min_val = min(Value, na.rm = TRUE),
+        max_val = max(Value, na.rm = TRUE),
+        ymin_BV = ifelse(is.finite(min_val), 0.8 * min_val, NA_real_),
+        ymax_BV = ifelse(is.finite(max_val), .4 * max_val, NA_real_)
+      ) %>%
+      ungroup() %>%
+      dplyr::select(-min_val, -max_val)
+    # =======================================================================
+
+
+
+    p_plot <- ggplot(df_sub, aes(x = xval, y = Value, color = Method, group = Method, shape = Method)) +
+      geom_point(size = 3.5, alpha = 0.8) +
+      geom_smooth(
+        data = subset(df_sub, Method == "Proposed"),
+        method = "gam", formula = y ~ s(x, k = 2), se = FALSE, size = 1.2
+      ) +
+      geom_smooth(
+        data = subset(df_sub, Method != "Proposed"),
+        method = "loess", span = 0.5, se = FALSE, size = 1.2
+      ) +
+
+      scale_shape_manual(values = c(15, 16, 17, 18, 8, 4, 3)) +
+
+      facet_grid(
+        B ~ V,
+        scales = "free_y",
+        labeller = labeller(V = v_labels, B = label_value)
+      ) +
+
+      facetted_pos_scales(
+        y = list(
+          B == unique(df_sub$B)[1] ~ scale_y_continuous(limits = c(0.05, .4), n.breaks = 5),
+          B == unique(df_sub$B)[2] ~ scale_y_continuous(limits = c(0.05, .4), n.breaks = 5)
+        )
+      ) +
+
+      labs(y = "Average L2 error", color = "Method", shape = "Method") +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 5)),
+        shape = guide_legend(override.aes = list(size = 5))
+      ) +
+
+      xlab(expression(2 * sqrt(s * log(p) / n))) +
+      coord_cartesian(xlim = c(0.25, 0.6))
+
+    ggsave(
+      filename = paste0("FigS10.png"),
+      plot = p_plot,
+      width = 16,
+      height = 9
+    )
+  }
+}
+
+
+my_shapes <- c(15, 16, 17, 18, 8, 4, 3)
+#------Figure S11-------
+df <- read.csv(here::here("simulation","Results","estimationcsv","prediction_joint_oracle.csv"))[,-1]
+
+df_long <- df %>%
+  pivot_longer(
+    cols = c(Proposed, Joint, oracle_based, oracle_r_based),
+    names_to = "Method",
+    values_to = "Value"
+  ) %>%
+  filter(!is.na(Value))
+
+smooth_curve <- function(data) {
+  data$pred_value <- as.numeric(data$Value)
+
+  if (nrow(data) < 3) {
+    return(data)
+  }
+
+  fit_val <- NULL
+  try({
+    y_min <- min(data$Value, na.rm = TRUE)
+    m_exp <- nls(
+      Value ~ a + b * exp(c * xval),
+      data = data,
+      start = list(a = y_min * 0.9, b = 0.05, c = 1.5),
+      control = nls.control(maxiter = 100, warnOnly = TRUE)
+    )
+
+    coefs <- coef(m_exp)
+    if (coefs["b"] > 0 && coefs["c"] > 0) {
+      fit_val <- as.numeric(predict(m_exp, newdata = data))
+    }
+  }, silent = TRUE)
+
+  if (is.null(fit_val)) {
+    try({
+      iso_y <- isoreg(data$xval, data$Value)$yf
+      unq <- !duplicated(data$xval)
+      sf <- splinefun(data$xval[unq], iso_y[unq], method = "monoH.FC")
+      fit_val <- as.numeric(sf(data$xval))
+    }, silent = TRUE)
+  }
+
+  if (is.null(fit_val)) {
+    m_lm <- lm(Value ~ xval, data = data)
+    fit_val <- as.numeric(predict(m_lm, newdata = data))
+  }
+
+  data$pred_value <- fit_val
+  return(data)
+}
+
+for (p_val in 1200) {
+  df_p <- df_long  %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(noise)
+
+  for (i in 1:nrow(nb_combos)) {
+    noise_val <- nb_combos$noise[i]
+    df_sub <- df_p %>% filter(noise == noise_val)
+
+    x_min_real <- min(df_sub$xval, na.rm = TRUE)
+    x_max_real <- max(df_sub$xval, na.rm = TRUE)
+
+    df_plot_data <- df_sub %>%
+      arrange(Method, B, V, xval) %>%
+      group_by(Method, B, V) %>%
+      group_modify(~ smooth_curve(.x)) %>%
+      ungroup()
+
+    p_plot <- ggplot(df_plot_data, aes(x = xval, color = Method, group = Method)) +
+      geom_line(aes(y = pred_value, linetype = Method), linewidth = 1.2) +
+      geom_point(aes(y = pred_value, shape = Method), size = 3, alpha = 0.9) +
+      scale_shape_manual(values = my_shapes) +
+      facet_grid(B ~ V, scales = "free_y", labeller = labeller(V = v_labels, B = label_both)) +
+
+      scale_x_continuous(
+        breaks = seq(0.3, 0.6, by = 0.1),
+        labels = c("0.3", "0.4", "0.5", "0.6")
+      ) +
+
+      facetted_pos_scales(
+        y = list(
+          B == 1 ~ scale_y_continuous(n.breaks = 5),
+          B == 2 ~ scale_y_continuous(n.breaks = 5)
+        )
+      ) +
+
+      labs(
+        y = "Prediction error",
+        color = "Method",
+        shape = "Method",
+        linetype = "Method",
+        x = expression(2*sqrt(s*log(p)/n))
+      ) +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 4)),
+        shape = guide_legend(override.aes = list(size = 4)),
+        linetype = guide_legend(keywidth = 3)
+      ) +
+      coord_cartesian(xlim = c(x_min_real - 0.005, x_max_real + 0.005))
+
+    ggsave(
+      filename = paste0("FigS11.png"),
+      plot = p_plot,
+      width = 16,
+      height = 9
+    )
+  }
+}

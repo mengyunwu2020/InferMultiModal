@@ -1,0 +1,26 @@
+{
+    "id": "FD2DC2B9",
+    "path": "~/Desktop/JASA Review/code_and_data/simulation/Replication_code/MainSetting/R_sensitivity/R_sensitivity_estimation.R",
+    "project_path": "simulation/Replication_code/MainSetting/R_sensitivity/R_sensitivity_estimation.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1794309074712.0,
+    "source_on_save": false,
+    "relative_order": 15,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "100,50",
+        "scrollLine": "86"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1794192948,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1794192948,
+    "read_only": false,
+    "read_only_alternatives": []
+}

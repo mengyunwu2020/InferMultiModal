@@ -1,0 +1,215 @@
+---
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+# Code and Data for "Structured Factor Regression with High-Dimensional Multimodal Data"
+
+## Overview
+
+This repository contains the R code and data for reproducing the simulation studies and real data analysis presented in the paper *Structured Factor Regression with High-Dimensional Multimodal Data*.
+
+The repository includes the implementation of the proposed method, alternative methods for comparison, simulation experiments, and real data analysis.
+
+## Repository Structure
+
+The repository is organized as follows:
+
+```text
+code_and_data/
+│
+├── InferMultiModal/              # R package implementing the proposed method
+│
+├── alternative/                  # Implementations of alternative methods
+│   ├── beta_li.R
+│   ├── beta_fan.R
+│   └── joint_func.R
+│
+├── Data/
+│   ├── RealData/                 # Data used in real data analysis
+│       ├── RawData/
+│       └── ProcessedData/
+│
+├── simulation/
+│   ├── Replication_code/         # Scripts for simulation experiments
+│   │   ├── MainSetting/
+│   │   │   └── R_sensitivity/
+│   │   ├── WeakSetting/
+│   │   ├── OnlyCommon/
+│   │   ├── NoCommon/
+│   │   └── LowerNoiseSetting/
+│   │
+│   └── Fig_Tab_Code/             # Scripts for generating figures and tables in simulation studies
+│
+├── realdata/
+│   ├── Full_Sample_Analysis/     # Analyses based on the full sample
+│   │   ├── Fig5.R                  # Scripts for generating Figure 5 in the main manuscript
+│   │   ├── Tab2.R                  # Scripts for generating Table 2 in the main manuscript
+│   │   └── Whole_Sample.R          # Scripts for estimation and inference analyses using the proposed approach based on the full sample
+|   |   └── Realdataxlsx.R          # Scripts for Realdata.xlsx
+│   └── Resampling_Analysis/      # Prediction and stability analyses
+│       ├── Prediction_Stability.R     # Scripts for prediction and stability analyses using resampling 
+│       └── averageError_and_jaccard.R # Scripts for generating average prediction error and jaccard indices based on the precomputed results
+│   └── Results/      # Prediction and stability analyses
+│       ├── Prediction_Stability.R     # Scripts for prediction and stability analyses using resampling 
+│       └── averageError_and_jaccard.R # Scripts for generating average prediction error and jaccard indices based on the precomputed results
+│
+└── README.Rmd
+```
+
+## 1. R Package: InferMultiModal
+
+The `InferMultiModal/` directory contains the R package implementing the proposed methodology.
+
+The package provides functions for:
+
+- Model estimation;
+- Prediction;
+- Hypothesis Testing of Idiosyncratic Residual Effects;
+- Hypothesis Testing of Modality-shared and Modality-specific Factor Effects.
+
+Detailed documentation of the package functions is available in the `man/` directory.
+
+## 2. Simulation Studies
+
+The `simulation/` directory contains the scripts for conducting simulation experiments and reproducing the corresponding figures and tables.
+
+### 2.1 Simulation Settings
+
+Five simulation settings are considered:
+
+- **Main Setting:** The primary simulation scenario provided in the main manuscript.
+- **No-Common-Component Setting:** A scenario without the common component (P1).
+- **Only-Common-Component Setting:** A scenario in which only the common component is present (P2).
+- **Weak Setting:** A scenario with weaker signals.
+- **Lower-Noise Setting:** A scenario with a lower noise level.
+
+The corresponding simulation data are organized in separate subdirectories under `Data/Simulation/`.
+
+### 2.2 Sensitivity Analysis
+
+Sensitivity analyses are conducted under the main simulation setting to investigate the robustness of the proposed method to latent dimension misspecification.
+
+The corresponding scripts are located in:
+
+```text
+simulation/Replication_code/MainSetting/R_sensitivity/
+```
+
+The sensitivity analysis data and results are associated with the main simulation setting.
+
+### 2.3 Replication Code
+
+The `simulation/Replication_code/` directory contains the R scripts for reproducing the simulation experiments under different settings.
+
+Each subdirectory corresponds to a particular simulation scenario and contains the scripts required to conduct the corresponding experiments.
+
+### 2.4 Figures and Tables
+
+The `simulation/Fig_Tab_Code/` directory contains the R scripts used to generate the figures and tables reported in the main paper and supplementary materials.
+
+The script names indicate the corresponding figure or table numbers.
+
+## 3. Alternative Methods 
+
+The `alternative/` directory contains the implementations of alternative methods used for comparison with the proposed approach.
+
+The main files include:
+
+- `beta_li.R`: Our implementation of the integrative factor regression method proposed by Li and Li (2022).
+- `beta_fan.R`: An adapted and wrapped version of the publicly available implementation of the method proposed by Fan et al. (2024).
+- `joint_func.R`: Functions for joint estimation.
+
+## 4. Real Data Analysis
+
+The `realdata/` directory contains the scripts for the real data analyses. The corresponding datasets are stored in `Data/RealData/`, with raw and processed data organized separately.
+
+The real data analyses are based on two TCGA lung cancer cohorts: lung adenocarcinoma (LUAD) and lung squamous cell carcinoma (LUSC). Four types of molecular data are considered: mRNA expression, DNA methylation, copy number alteration (CNA), and protein expression. The clinical outcome is the pre-bronchodilator FEV1 percentage of predicted value.
+
+The analysis scripts are divided into two groups.
+
+### 4.1 Full-Sample Analysis
+
+The `Full_Sample_Analysis/` directory contains scripts for analyses based on the full sample.
+
+- `Whole_Sample.R`: Performs the real data analysis using the full sample.
+- `Fig5.R`: Generates Figure 5 based on the full-sample analysis results.
+- `Tab2.R`: Generates Table 2 based on the full-sample analysis results.
+- `Realdataxlsx.R`: Generates Realdata.xlsx, which contains the estimated parameters and hypothesis testing results.
+
+### 4.2 Resampling Analysis
+
+The `Resampling_Analysis/` directory contains scripts for evaluating prediction performance and the stability of the analysis results through resampling.
+
+- `Prediction_Stability.R`: Conducts resampling analyses based on a 20:1 training-test split to evaluate prediction performance and the stability of the results.
+- `averageError_and_jaccard.R`: Calculates the average estimation error and Jaccard index based on the resampling results, quantifying estimation accuracy and variable selection stability, respectively.
+
+## 5. Data Availability
+
+### 5.1 Data Sources
+
+The original LUAD and LUSC data are publicly available through [cBioPortal](https://www.cbioportal.org/). The corresponding TCGA studies are [LUAD](https://www.cbioportal.org/study/summary?id=luad_tcga) and [LUSC](https://www.cbioportal.org/study/summary?id=lusc_tcga).
+
+The downloaded raw data are stored in `Data/RealData/RawData/`. The processed datasets used in the analyses are provided in `Data/RealData/ProcessedData/`.
+
+### 5.2 Data Preprocessing
+
+The preprocessing scripts are provided in the `realdata/` directory. They document the procedures for extracting the clinical outcome, processing the molecular data, matching samples across data types, and constructing the final analysis datasets from the downloaded raw data.
+
+### 5.3 Processed Data Structure
+
+The processed real data are stored in an RData file as a data frame named `Lung_df`, which combines the LUAD and LUSC cohorts. The dataset contains 241 observations and 1,995 variables, including one clinical outcome and 1,994 molecular features from four data modalities.
+
+The variables are organized as follows:
+
+| Variables (Number) | Description |
+|---|---|
+| `FEV1_PERCENT_REF_PREBRONCHOLIATOR` (1) | Pre-bronchodilator FEV1 percentage of predicted value (clinical outcome) |
+| mRNA expression (300) | Selected mRNA expression features |
+| DNA methylation (300) | Selected DNA methylation features |
+| Copy number alteration (CNA) (300) | Selected CNA features |
+| Protein expression (194) | Protein expression features |
+| **Total (1,095)** | |
+
+Each row corresponds to a TCGA sample, with sample identifiers provided as row names. The processed dataset serves as the input for the real-data analyses.
+
+## 6. Reproducibility
+
+To reproduce the results reported in the paper:
+
+1. Set the working directory. Set the working directory to the root directory of the downloaded code repository. For example:
+
+working_directory <- "path/to/code_and_data"
+setwd(working_directory)
+
+Set the working directory. Set the working directory to the root directory of the downloaded code repository. For example:
+
+## Reproducibility
+
+To reproduce the simulation experiments and real data analyses, please follow the steps below.
+
+1. **Set the working directory.** Set the working directory to the root directory of the downloaded code repository. For example:
+
+   ```r
+   working_directory <- "path/to/code_and_data"
+   setwd(working_directory)
+   ```
+
+2. **Install the required R packages.** Install all required R packages listed in the scripts.
+
+3. **Install or load the `InferMultiModal` package.** Ensure that the `InferMultiModal` package is installed and loaded before running the analysis scripts.
+
+4. **Reproduce the simulation experiments.** Run the scripts in `simulation/Replication_code/` to reproduce the simulation experiments.
+
+5. **Generate the simulation figures and tables.** Run the scripts in `simulation/Fig_Tab_Code/` to generate the corresponding simulation figures and tables.
+
+6. **Prepare the real data.** Obtain the required raw datasets and run `Data/RealData/processed_procedure.R` to generate the processed datasets, if they are not already available.
+
+7. **Reproduce the real data analyses.** Run the corresponding scripts in `realdata/` to reproduce the real data analysis results. 
+
+## References
+
+- Li, Q., & Li, L. (2022). Integrative factor regression and its inference for multimodal data. *Journal of the American Statistical Association*, 117(540), 2207–2221.
+
+- Fan, J., Lou, Z., & Yu, M. (2024). Are latent factor regression and sparse regression adequate? *Journal of the American Statistical Association*, 119(546), 1076–1088.

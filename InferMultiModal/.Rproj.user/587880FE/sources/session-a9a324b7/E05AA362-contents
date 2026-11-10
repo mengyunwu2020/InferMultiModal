@@ -1,0 +1,379 @@
+#p: 200 300 400 500
+
+devtools::load_all("C:/Users/Lenovo/Nutstore/1/我的坚果云/科研/2025/factor_reg/yale服务器/factor_final/function/InferMultiModal")
+source("C:/Users/Lenovo/Nutstore/1/我的坚果云/JASA Review/joint_func.R", echo=TRUE)
+# Get command line arguments
+args <- commandArgs(trailingOnly = TRUE)
+for(aaaa in seq(501,981,by=20)){
+args=c(1200,aaaa,3,1,1)
+# Number of variables
+p <- as.numeric(args[1])
+
+
+# Settings for generating factors F
+# 1 = independent factors
+# 2 = strong mixing factors
+choose_F <- 1
+
+choose_re_begin<-as.numeric(args[2])
+
+
+# Settings for generating error structure V
+# 1 = independent errors
+# 2 = banded errors -- Band (0.2)
+# 3 = moderate mixing errors -- AR (0.2)
+# 4 = block mixing errors -- Block (0.5)
+# 5 = strong mixing errors -- AR (0.5)
+choose_V <- as.numeric(args[3])
+
+# Settings for noise distribution
+# 1 = Gaussian noise -- N(0,1)
+# 2 = Uniform noise -- Uniform [-sqrt(3),sqrt(3)]
+choose_noise <- as.numeric(args[4])
+
+
+# Settings for loading distribution
+# 1 = Gaussian N(0,1)
+# 2 = Uniform [-sqrt(3),sqrt(3)]
+choose_B <- as.numeric(args[5])
+
+
+
+
+# Display the chosen settings
+cat("Running simulation with settings:\n")
+cat(" - p =", p, "\n")
+cat(" - choose_V =", choose_V, "(1 = independent, 2 = Band (0.2), 3 = AR (0.2), 4 = Block (0.5), 5 =  AR (0.5))\n")
+cat(" - choose_noise =", choose_noise, "(1 = Gaussian, 2 = Uniform)\n")
+cat(" - choose_B =", choose_B, "(1 = Gaussian, 2 = Uniform)\n")
+
+folder_path <- paste0("C:/Users/Lenovo/Nutstore/1/我的坚果云/JASA Review/simulation/over_r/betatest/case_p", args[1],"_F", 1, "_V", args[3], "_noise", args[4], "_B", args[5])
+
+
+
+# 检查是否存在，不存在则创建
+if (!dir.exists(folder_path)) {
+  dir.create(folder_path, recursive = TRUE)
+}
+
+# 设置为当前工作目录
+setwd(folder_path)
+
+
+#------------Loading Packages---------------
+
+
+
+# install.packages("SIS")
+library(GrFA)
+library(ncvreg)
+library(Matrix)
+library(glmnet)
+library(SIS)
+library(MASS)
+#-----------Basic Settings----------------
+n=300 #number of observations
+set.seed(1)
+K=4
+r_f=c(2,rep(2,K)) #number of factors
+r_all=sum(r_f)
+gamma1=0.5*rep(1,r_all)#value for gamma
+pm=rep(p/K,K)
+
+
+if(choose_V==2){
+  ## v2
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .2
+    top_mat[i+1, i] <- .2
+  }
+}else if(choose_V==3){
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.2^abs(i-j)
+    }
+  }
+}else if(choose_V==4){
+  ## v4
+  top_mat_block<-matrix(nrow=p/K,ncol=p/K) #block covariance matrix
+  for (i in c(1:p/K)){
+    for (j in c(1:p/K)){
+      top_mat_block[i,j]=0.5^abs(i-j)
+    }
+  }
+
+  top_mat<-as.matrix(bdiag(top_mat_block,top_mat_block))
+  top_mat<-as.matrix(bdiag(top_mat,top_mat_block))
+  top_mat<-as.matrix(bdiag(top_mat,top_mat_block))
+
+}else if(choose_V==5){
+  ## v5
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.5^abs(i-j)
+    }
+  }
+}else if(choose_V==6){
+  ## v6
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .4
+    top_mat[i+1, i] <- .4
+  }
+
+}else if(choose_V==7){
+  ## v7
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.4^abs(i-j)
+    }
+  }
+}else if(choose_V==8){
+  ## v6
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .3
+    top_mat[i+1, i] <- .3
+  }
+
+}else if(choose_V==9){
+  ## v7
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.3^abs(i-j)
+    }
+  }
+}
+
+
+beta_0=c(rep(0,p)) #beta under the null hypothesis
+#------------------------#beta in the alternative with signal strength w rises from 0.05 to 0.2--------------
+beta_1=c(rep(0.05,2),rep(0,p/K-2),rep(0.05,2),rep(0,p/K-2),rep(0.05,2),rep(0,p/K-2),rep(0.05,2),rep(0,p/K-2))
+beta_2=c(rep(0.1,2),rep(0,p/K-2),rep(0.1,2),rep(0,p/K-2),rep(0.1,2),rep(0,p/K-2),rep(0.1,2),rep(0,p/K-2))
+beta_3=c(rep(0.15,2),rep(0,p/K-2),rep(0.15,2),rep(0,p/K-2),rep(0.15,2),rep(0,p/K-2),rep(0.15,2),rep(0,p/K-2))
+beta_4=c(rep(0.2,2),rep(0,p/K-2),rep(0.2,2),rep(0,p/K-2),rep(0.2,2),rep(0,p/K-2),rep(0.2,2),rep(0,p/K-2))
+beta_5=c(rep(0.25,2),rep(0,p/K-2),rep(0.25,2),rep(0,p/K-2),rep(0.25,2),rep(0,p/K-2),rep(0.25,2),rep(0,p/K-2))
+beta_6=c(rep(0.3,2),rep(0,p/K-2),rep(0.3,2),rep(0,p/K-2),rep(0.3,2),rep(0,p/K-2),rep(0.3,2),rep(0,p/K-2))
+beta_7=c(rep(0.35,2),rep(0,p/K-2),rep(0.35,2),rep(0,p/K-2),rep(0.35,2),rep(0,p/K-2),rep(0.35,2),rep(0,p/K-2))
+beta_8=c(rep(0.4,2),rep(0,p/K-2),rep(0.4,2),rep(0,p/K-2),rep(0.4,2),rep(0,p/K-2),rep(0.4,2),rep(0,p/K-2))
+
+
+if(choose_B==1){
+  B_c<-matrix(rnorm(p*r_f[1]),nrow=p) #generate common factor loading or using gaussian.
+}else{
+  B_c<-matrix(runif(p*r_f[1],-sqrt(3),sqrt(3)),nrow=p) #generate common factor loading or using gaussian.
+}
+
+B=B_c
+B_s<-list()
+
+if(choose_B==1){
+  for(k in 1:K){
+    B_s[[k]]<-matrix(rnorm(pm[k]*r_f[k+1]),nrow=pm[k]) #generate common factor loading or using gaussian.
+  }
+}else{
+  for(k in 1:K){
+    B_s[[k]]<-matrix(runif(pm[k]*r_f[k+1],-sqrt(3),sqrt(3)),nrow=pm[k])
+  }
+}
+block_diag <- as.matrix(bdiag(B_s[[1]], B_s[[2]]))
+block_diag <- as.matrix(bdiag(block_diag, B_s[[3]]))
+block_diag <- as.matrix(bdiag(block_diag, B_s[[4]]))
+
+B=cbind(B_c,as.matrix(block_diag))
+
+
+ratio<-c()
+repli=1000
+idx3=idx1<-matrix(NA,nrow = 18,ncol = repli+1)
+
+idx1_fan<-c() #size of the test under the null
+idx2_fan<-c()
+idx3_fan<-c()
+idx4_fan<-c()
+idx5_fan<-c()
+
+id_li <- id_li2 <- id_li3 <- id_li4 <- id_li5 <- NULL
+jji=choose_re_begin
+
+ress=list()
+if(file.exists(paste0("beta_result_",choose_re_begin,".rdata"))){
+  load(paste0("beta_result_",choose_re_begin,".rdata"))
+}
+
+
+
+if(file.exists(paste0("beta_res_all",choose_re_begin,".csv"))){
+
+  idx1=read.csv(paste0("beta_res_all",choose_re_begin,".csv"))[,-1]
+  jji=dim(idx1)[2]-length(which(is.na(idx1[1,])))+choose_re_begin-1
+}
+
+
+
+idx4=idx2=matrix(NA,72,repli+1)
+if(file.exists(paste0("beta_res_all_kk_",choose_re_begin,".csv"))){
+
+  idx2=read.csv(paste0("beta_res_all_kk_",choose_re_begin,".csv"))[,-1]
+}
+if(file.exists(paste0("beta_res_all_kk_over_r_",choose_re_begin,".csv"))){
+
+idx4=read.csv(paste0("beta_res_all_kk_over_r_",choose_re_begin,".csv"))[,-1]
+idx3=read.csv(paste0("beta_res_all_over_r_",choose_re_begin,".csv"))[,-1]
+
+}
+# if(file.exists(paste0("beta_res",choose_re_begin,".rdata"))){
+#
+#   file.remove(paste0("beta_res",choose_re_begin,".rdata"))
+#   # jji=length(ress)-choose_re_begin+1
+# }
+var_isis<-c()
+var_sis<-c()
+sum_idx1<-c()
+sum_idx12<-c()
+
+if(jji!=(choose_re_begin+20)){
+  for (i in  c(jji:(choose_re_begin+19))){ #repeat 1000 times
+    set.seed(i+2000)
+    if (choose_F==1){
+      F<-matrix(rnorm(n*r_all),nrow=n) #generate factor
+    }else{
+      F_start=rnorm(r_all)
+      F_origin=F_start
+      for (t in c(1:200)){
+        F_start=Phi%*%F_origin+rnorm(r_all)
+        F_origin=F_start
+      }
+      F<-matrix(nrow=n,ncol=r_all) #factor
+      for (t in c(1:n)){
+        F_start=Phi%*%F_origin+rnorm(r_all)###notice
+        F_origin=F_start
+        F[t,]<-F_start
+      }
+    }
+
+
+    if(choose_V==1){
+      V<-matrix(rnorm(n*p),nrow=n)
+    }else{
+      V<-mvrnorm(n, rep(0,p),top_mat) #generate idiosyncratic component
+    }
+
+
+    X=F%*%t(B)+V #design matrix
+
+
+    ss=1
+    XX=list()
+    for(k in 1:K){
+      XX[[k]]=X[,ss:(ss+pm[k]-1)]
+      ss=ss+pm[k]
+    }
+
+
+    #---------------- Main Procedures -------------------
+    if (choose_noise==1){
+      Y=F%*%gamma1+rnorm(n,0,1) #response under the null}
+    }else if (choose_noise==2){
+      Y=F%*%gamma1+runif(n,-sqrt(3),sqrt(3))
+    }
+
+
+    #------------Response under the alternative-------------
+    Y2=Y+V%*%beta_1
+    Y3=Y+V%*%beta_2
+    Y4=Y+V%*%beta_3
+    Y5=Y+V%*%beta_4
+
+    Y6=Y+V%*%beta_5
+    Y7=Y+V%*%beta_6
+    Y8=Y+V%*%beta_7
+    # Y9=Y+V%*%beta_8
+
+
+    if(!(file.exists(paste0("res_fac_wrong_",i,".rdata")))){
+      res_fac = estimation_fac(XX, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3",  factor_res=NULL,nodewise_step=TRUE,boot_rep=1,boot_each=500,alpha=0.05)
+
+
+      save(res_fac,file=paste0("res_fac_wrong_",i,".rdata"))
+    }else{
+      load(paste0("res_fac_wrong_",i,".rdata"))
+    }
+
+
+
+
+    fit = estimation(XX,Y, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit1=betatest(XX,Y,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y2, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit2=betatest(XX,Y2,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y3, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit3=betatest(XX,Y3,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y4, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit4=betatest(XX,Y4,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y5, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit5=betatest(XX,Y5,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y6, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit6=betatest(XX,Y6,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y7, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit7=betatest(XX,Y7,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    fit = estimation(XX,Y8, K, rmax=10, r0=3,  r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac,tun_ncvreg='BIC')
+    fit8=betatest(XX,Y8,K,fit=fit,rmax=10,r0=3, r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500,tun_ncvreg='BIC')
+
+    # fit = estimation(XX,Y9, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit9=betatest(XX,Y9,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda=NULL,alpha=0.05,factor_res=NULL,boot_rep=1,boot_each=500)
+
+
+
+
+
+    #-------------------Compute the size of the test or power of the test----------------------
+    idx3[10,i+1]<-fit1$pvals[1]<0.05
+    idx3[11,i+1]<-fit2$pvals[1]<0.05
+    idx3[12,i+1]<-fit3$pvals[1]<0.05
+    idx3[13,i+1]<-fit4$pvals[1]<0.05
+    idx3[14,i+1]<-fit5$pvals[1]<0.05
+    idx3[15,i+1]<-fit6$pvals[1]<0.05
+    idx3[16,i+1]<-fit7$pvals[1]<0.05
+    idx3[17,i+1]<-fit8$pvals[1]<0.05
+    # idx3[18,i+1]<-fit9$pvals[1]<0.05
+
+
+    idx4[37:40,i+1]=fit1$pvals[2:5]<0.05
+    idx4[41:44,i+1]=fit2$pvals[2:5]<0.05
+    idx4[45:48,i+1]=fit3$pvals[2:5]<0.05
+    idx4[49:52,i+1]=fit4$pvals[2:5]<0.05
+    idx4[53:56,i+1]=fit5$pvals[2:5]<0.05
+    idx4[57:60,i+1]=fit6$pvals[2:5]<0.05
+    idx4[61:64,i+1]=fit7$pvals[2:5]<0.05
+    idx4[65:68,i+1]=fit8$pvals[2:5]<0.05
+    # idx4[69:72,i+1]=fit9$pvals[2:5]<0.05
+
+
+
+    # tmp=rowMeans(idx4[,-1],na.rm=T)
+    # idx4[,1]=tmp
+    write.csv(idx4,paste0("beta_res_all_kk_over_r_",choose_re_begin,".csv"))
+
+
+    write.csv(idx3,paste0("beta_res_all_over_r_",choose_re_begin,".csv"))
+
+
+
+
+  }
+}
+
+}

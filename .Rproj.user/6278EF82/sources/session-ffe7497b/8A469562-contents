@@ -1,0 +1,283 @@
+ 
+
+target_dir <- "/Users/qinxing/Desktop/JASA Review/code_and_data/simulation/Fig_Tab_Code"
+
+# 1. 抓取该文件夹下所有 .R 脚本
+r_files <- list.files(
+  path = target_dir, 
+  pattern = "\\.[rR]$", 
+  full.names = TRUE, 
+  recursive = FALSE
+)
+
+# 排除当前脚本自身（如果当前脚本也保存在该目录下）
+# r_files <- r_files[basename(r_files) != "check_scripts.R"]
+
+cat(sprintf("共发现 %d 个 R 脚本，开始排查...\n\n", length(r_files)))
+
+# 2. 依次运行并捕获执行状态
+results <- data.frame(
+  File = character(),
+  Status = character(),
+  Error_Message = character(),
+  stringsAsFactors = FALSE
+)
+
+for (i in seq_along(r_files)) {
+  f <- r_files[i]
+  fname <- basename(f)
+  cat(sprintf("[%d/%d] 正在测试: %s ... ", i, length(r_files), fname))
+  
+  # chdir = TRUE 确保脚本内读取相对路径的数据/依赖时不报错
+  # local = new.env() 避免脚本间变量相互污染
+  res <- tryCatch({
+    source(f, local = new.env(), chdir = TRUE)
+    cat("✓ 成功\n")
+    list(status = "Success", msg = "")
+  }, error = function(e) {
+    cat("✗ 失败\n")
+    list(status = "Failed", msg = conditionMessage(e))
+  })
+  
+  results <- rbind(results, data.frame(
+    File = fname,
+    Status = res$status,
+    Error_Message = res$msg,
+    stringsAsFactors = FALSE
+  ))
+}
+
+# 3. 输出失败汇总
+failed_results <- subset(results, Status == "Failed")
+
+cat("\n========================================\n")
+cat(sprintf("排查完成！成功: %d 个 | 失败: %d 个\n", 
+            sum(results$Status == "Success"), 
+            nrow(failed_results)))
+cat("========================================\n\n")
+
+if (nrow(failed_results) > 0) {
+  cat("❌ 以下脚本运行失败：\n\n")
+  for (k in 1:nrow(failed_results)) {
+    cat(sprintf("%d. 文件: %s\n   报错: %s\n\n", 
+                k, 
+                failed_results$File[k], 
+                failed_results$Error_Message[k]))
+  }
+} else {
+  cat("🎉 所有脚本均顺利运行成功！\n")
+}
+
+
+
+
+
+
+target_dir <- "/Users/qinxing/Desktop/JASA Review/code_and_data/realdata"
+
+# 1. 递归抓取所有子文件夹下的 .R 文件
+r_files <- list.files(
+  path = target_dir, 
+  pattern = "\\.[rR]$", 
+  full.names = TRUE, 
+  recursive = TRUE
+)
+
+# 排除可能放在目录下的检测脚本本身
+# r_files <- r_files[basename(r_files) != "check_all.R"]
+
+cat(sprintf("共检索到 %d 个 R 脚本，每个限时 5 分钟 (300秒)...\n\n", length(r_files)))
+
+results <- data.frame(
+  Path = character(),
+  File = character(),
+  Status = character(),
+  Details = character(),
+  Time_Used_Sec = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# 限时 5 分钟 = 300 秒
+time_limit_sec <- 300 
+
+for (i in seq_along(r_files)) {
+  f <- r_files[i]
+  fname <- basename(f)
+  rel_path <- sub(paste0("^", target_dir, "/?"), "", f)
+  
+  cat(sprintf("[%d/%d] 测试: %s\n", i, length(r_files), rel_path))
+  start_time <- Sys.time()
+  
+  res <- tryCatch({
+    # 设置当前表达式执行的 CPU 时间和实际耗时上限（秒）
+    setTimeLimit(cpu = time_limit_sec, elapsed = time_limit_sec, transient = TRUE)
+    
+    # 隔离环境执行，chdir = TRUE 自动切到该脚本所在子文件夹运行，避免相对路径报错
+    source(f, local = new.env(), chdir = TRUE)
+    
+    # 执行完取消时限
+    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
+    
+    list(status = "Completed", msg = "5分钟内运行完成且无报错")
+  }, error = function(e) {
+    # 发生异常时也确保重置时限
+    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
+    err_msg <- conditionMessage(e)
+    
+    # 判断是否为超时触发的异常
+    if (grepl("reached elapsed time limit|reached CPU time limit", err_msg)) {
+      list(status = "Timeout (Pass)", msg = "已稳定运行满5分钟无报错，按预设规则视为通过")
+    } else {
+      list(status = "Failed", msg = err_msg)
+    }
+  })
+  
+  duration <- round(as.numeric(difftime(Sys.time(), start_time, units = "secs")), 1)
+  
+  if (res$status == "Completed") {
+    cat(sprintf("  -> ✓ 运行完成 (耗时: %.1f 秒)\n\n", duration))
+  } else if (res$status == "Timeout (Pass)") {
+    cat(sprintf("  -> ⏱ 满 5 分钟无报错，判定通过 (耗时: %.1f 秒)\n\n", duration))
+  } else {
+    cat(sprintf("  -> ✗ 运行出错 (耗时: %.1f 秒): %s\n\n", duration, res$msg))
+  }
+  
+  results <- rbind(results, data.frame(
+    Path = rel_path,
+    File = fname,
+    Status = res$status,
+    Details = res$msg,
+    Time_Used_Sec = duration,
+    stringsAsFactors = FALSE
+  ))
+}
+
+# ==============================================================================
+# 汇总结果
+# ==============================================================================
+failed_df <- subset(results, Status == "Failed")
+
+cat("\n=======================================================\n")
+cat(sprintf("排查结束！共 %d 个脚本：\n", nrow(results)))
+cat(sprintf("  - 5分钟内顺利跑完: %d 个\n", sum(results$Status == "Completed")))
+cat(sprintf("  - 满5分钟未报错通过: %d 个\n", sum(results$Status == "Timeout (Pass)")))
+cat(sprintf("  - 运行报错失败: %d 个\n", nrow(failed_df)))
+cat("=======================================================\n\n")
+
+if (nrow(failed_df) > 0) {
+  cat("❌ 以下脚本发生错误（5分钟内报错退出）：\n\n")
+  for (k in 1:nrow(failed_df)) {
+    cat(sprintf("%d. 路径: %s\n   报错信息: %s\n\n", 
+                k, 
+                failed_df$Path[k], 
+                failed_df$Details[k]))
+  }
+} else {
+  cat("🎉 所有脚本在 5 分钟内均未出现报错！\n")
+}
+
+
+
+target_dir <- "/Users/qinxing/Desktop/JASA Review/code_and_data/simulation/Replication_code"
+
+# 1. 递归抓取所有子文件夹下的 .R 文件
+r_files <- list.files(
+  path = target_dir, 
+  pattern = "\\.[rR]$", 
+  full.names = TRUE, 
+  recursive = TRUE
+)
+
+# 排除可能放在目录下的检测脚本本身
+# r_files <- r_files[basename(r_files) != "check_all.R"]
+
+cat(sprintf("共检索到 %d 个 R 脚本，每个限时 5 分钟 (300秒)...\n\n", length(r_files)))
+
+results <- data.frame(
+  Path = character(),
+  File = character(),
+  Status = character(),
+  Details = character(),
+  Time_Used_Sec = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# 限时 5 分钟 = 300 秒
+time_limit_sec <- 300 
+
+for (i in seq_along(r_files)) {
+  f <- r_files[i]
+  fname <- basename(f)
+  rel_path <- sub(paste0("^", target_dir, "/?"), "", f)
+  
+  cat(sprintf("[%d/%d] 测试: %s\n", i, length(r_files), rel_path))
+  start_time <- Sys.time()
+  
+  res <- tryCatch({
+    # 设置当前表达式执行的 CPU 时间和实际耗时上限（秒）
+    setTimeLimit(cpu = time_limit_sec, elapsed = time_limit_sec, transient = TRUE)
+    
+    # 隔离环境执行，chdir = TRUE 自动切到该脚本所在子文件夹运行，避免相对路径报错
+    source(f, local = new.env(), chdir = TRUE)
+    
+    # 执行完取消时限
+    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
+    
+    list(status = "Completed", msg = "5分钟内运行完成且无报错")
+  }, error = function(e) {
+    # 发生异常时也确保重置时限
+    setTimeLimit(cpu = Inf, elapsed = Inf, transient = FALSE)
+    err_msg <- conditionMessage(e)
+    
+    # 判断是否为超时触发的异常
+    if (grepl("reached elapsed time limit|reached CPU time limit", err_msg)) {
+      list(status = "Timeout (Pass)", msg = "已稳定运行满5分钟无报错，按预设规则视为通过")
+    } else {
+      list(status = "Failed", msg = err_msg)
+    }
+  })
+  
+  duration <- round(as.numeric(difftime(Sys.time(), start_time, units = "secs")), 1)
+  
+  if (res$status == "Completed") {
+    cat(sprintf("  -> ✓ 运行完成 (耗时: %.1f 秒)\n\n", duration))
+  } else if (res$status == "Timeout (Pass)") {
+    cat(sprintf("  -> ⏱ 满 5 分钟无报错，判定通过 (耗时: %.1f 秒)\n\n", duration))
+  } else {
+    cat(sprintf("  -> ✗ 运行出错 (耗时: %.1f 秒): %s\n\n", duration, res$msg))
+  }
+  
+  results <- rbind(results, data.frame(
+    Path = rel_path,
+    File = fname,
+    Status = res$status,
+    Details = res$msg,
+    Time_Used_Sec = duration,
+    stringsAsFactors = FALSE
+  ))
+}
+
+# ==============================================================================
+# 汇总结果
+# ==============================================================================
+failed_df <- subset(results, Status == "Failed")
+
+cat("\n=======================================================\n")
+cat(sprintf("排查结束！共 %d 个脚本：\n", nrow(results)))
+cat(sprintf("  - 5分钟内顺利跑完: %d 个\n", sum(results$Status == "Completed")))
+cat(sprintf("  - 满5分钟未报错通过: %d 个\n", sum(results$Status == "Timeout (Pass)")))
+cat(sprintf("  - 运行报错失败: %d 个\n", nrow(failed_df)))
+cat("=======================================================\n\n")
+
+if (nrow(failed_df) > 0) {
+  cat("❌ 以下脚本发生错误（5分钟内报错退出）：\n\n")
+  for (k in 1:nrow(failed_df)) {
+    cat(sprintf("%d. 路径: %s\n   报错信息: %s\n\n", 
+                k, 
+                failed_df$Path[k], 
+                failed_df$Details[k]))
+  }
+} else {
+  cat("🎉 所有脚本在 5 分钟内均未出现报错！\n")
+}
+

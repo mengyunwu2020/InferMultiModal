@@ -1,0 +1,110 @@
+
+rate=20
+library(here)
+average_error=round(colMeans(read.csv(here::here("realdata","Results","rate20error.csv"))[,-1]),2)
+names(average_error)=c('proposed','MCP','FARM','IFRM')
+cat('Average Error:','\n')
+print(average_error)
+
+
+
+
+jaccard <- function(A, B) {
+  if (length(union(A, B)) == 0) return(1)
+  length(intersect(A, B)) / length(union(A, B))
+}
+
+
+#---beta_overall jaccard-----
+dat1 <- read.csv(here::here("realdata","Results","betares20.csv"))[1:100,2]
+dat=dat1
+
+X_tmp <- as.matrix(dat)
+X_tmp <- (X_tmp == 1) * 1
+jaccard <- function(x, y) {
+  union_n <- sum(x == 1 | y == 1)
+  if (union_n == 0) return(1)
+  sum(x == 1 & y == 1) / union_n
+}
+
+n_tmp <- nrow(X_tmp)
+J <- matrix(1, nrow = n_tmp, ncol = n_tmp)
+
+for (i in 1:n_tmp) {
+  for (j in i:n_tmp) {
+    J[i, j] <- J[j, i] <- jaccard(X_tmp[i, ], X_tmp[j, ])
+  }
+}
+cat('jaccard index of beta_overall: mean: ', mean(J[lower.tri(J)]),', SD:',sd(J[lower.tri(J)]),'\n')
+
+#---beta_specific jaccard-----
+dat1 <- read.csv(here::here("realdata","Results","betares20.csv"))[1:100,3:6]
+dat=dat1
+
+X_tmp <- as.matrix(dat)
+X_tmp <- (X_tmp == 1) * 1
+jaccard <- function(x, y) {
+  union_n <- sum(x == 1 | y == 1)
+  if (union_n == 0) return(1)
+  sum(x == 1 & y == 1) / union_n
+}
+
+n_tmp <- nrow(X_tmp)
+J <- matrix(1, nrow = n_tmp, ncol = n_tmp)
+
+for (i in 1:n_tmp) {
+  for (j in i:n_tmp) {
+    J[i, j] <- J[j, i] <- jaccard(X_tmp[i, ], X_tmp[j, ])
+  }
+}
+cat('jaccard index of beta_specific: mean: ', mean(J[lower.tri(J)]),', SD:',sd(J[lower.tri(J)]),'\n')
+
+
+
+#---gamma_overall jaccard----
+dat2 <- read.csv(here::here("realdata","Results","gammares20.csv"))[1:100,2]<0.05
+dat=dat2
+
+X_tmp <- as.matrix(dat)
+X_tmp <- (X_tmp == 1) * 1
+jaccard <- function(x, y) {
+  union_n <- sum(x == 1 | y == 1)
+  if (union_n == 0) return(1)
+  sum(x == 1 & y == 1) / union_n
+}
+
+n_tmp <- nrow(X_tmp)
+J <- matrix(1, nrow = n_tmp, ncol = n_tmp)
+
+for (i in 1:n_tmp) {
+  for (j in i:n_tmp) {
+    J[i, j] <- J[j, i] <- jaccard(X_tmp[i, ], X_tmp[j, ])
+  }
+}
+cat('jaccard index of gamma_overall: mean: ', mean(J[lower.tri(J)]),', SD:',sd(J[lower.tri(J)]),'\n')
+
+#---gamma_specific jaccard-----
+dat2 <-  read.csv(here::here("realdata","Results","gammares20.csv"))[1:100,3:6]<0.05
+dat=dat2
+
+X_tmp <- as.matrix(dat)
+X_tmp <- (X_tmp == 1) * 1
+jaccard <- function(x, y) {
+  union_n <- sum(x == 1 | y == 1)
+  if (union_n == 0) return(1)
+  sum(x == 1 & y == 1) / union_n
+}
+
+n_tmp <- nrow(X_tmp)
+J <- matrix(1, nrow = n_tmp, ncol = n_tmp)
+
+for (i in 1:n_tmp) {
+  for (j in i:n_tmp) {
+    J[i, j] <- J[j, i] <- jaccard(X_tmp[i, ], X_tmp[j, ])
+  }
+}
+cat('jaccard index of gamma_specific: mean: ', mean(J[lower.tri(J)]),', SD:',sd(J[lower.tri(J)]),'\n')
+
+
+
+

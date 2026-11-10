@@ -1,0 +1,1125 @@
+#p: 200 300 400 500
+source("~/下载/beta_fan.R")
+devtools::load_all("/home/dell/Nutstore Files/我的坚果云/科研/2025/factor_reg/yale服务器/factor_final/function/InferMultiModal")
+source("/home/dell/Nutstore Files/我的坚果云/JASA Review/joint_func.R", echo=TRUE)
+source("~/下载/beta_li.R")
+# Get command line arguments
+args <- commandArgs(trailingOnly = TRUE)
+
+args=c(1200,421,1,1,1)
+# Number of variables
+p <- as.numeric(args[1])
+
+
+# Settings for generating factors F
+# 1 = independent factors
+# 2 = strong mixing factors
+choose_F <- 1
+
+choose_re_begin<-as.numeric(args[2])
+
+
+# Settings for generating error structure V
+# 1 = independent errors
+# 2 = banded errors -- Band (0.2)
+# 3 = moderate mixing errors -- AR (0.2)
+# 4 = block mixing errors -- Block (0.5)
+# 5 = strong mixing errors -- AR (0.5)
+choose_V <- as.numeric(args[3])
+
+# Settings for noise distribution
+# 1 = Gaussian noise -- N(0,1)
+# 2 = Uniform noise -- Uniform [-sqrt(3),sqrt(3)]
+choose_noise <- as.numeric(args[4])
+
+
+# Settings for loading distribution
+# 1 = Gaussian N(0,1)
+# 2 = Uniform [-sqrt(3),sqrt(3)]
+choose_B <- as.numeric(args[5])
+
+
+
+
+# Display the chosen settings
+cat("Running simulation with settings:\n")
+cat(" - p =", p, "\n")
+cat(" - choose_V =", choose_V, "(1 = independent, 2 = Band (0.2), 3 = AR (0.2), 4 = Block (0.5), 5 =  AR (0.5))\n")
+cat(" - choose_noise =", choose_noise, "(1 = Gaussian, 2 = Uniform)\n")
+cat(" - choose_B =", choose_B, "(1 = Gaussian, 2 = Uniform)\n")
+
+folder_path <- paste0("/home/dell/Nutstore Files/我的坚果云/JASA Review/simulation/setting_nonoise/betatest/case_p", args[1],"_F", 1, "_V", args[3], "_noise", args[4], "_B", args[5])
+
+
+
+# 检查是否存在，不存在则创建
+if (!dir.exists(folder_path)) {
+  dir.create(folder_path, recursive = TRUE)
+}
+
+# 设置为当前工作目录
+setwd(folder_path)
+
+
+#------------Loading Packages---------------
+
+
+
+# install.packages("SIS")
+library(GrFA)
+library(ncvreg)
+library(Matrix)
+library(glmnet)
+library(SIS)
+library(MASS)
+#-----------Basic Settings----------------
+n=300 #number of observations
+set.seed(1)
+K=4
+r_f=c(2,rep(2,K)) #number of factors
+r_all=sum(r_f)
+gamma1=0.5*rep(1,r_all)#value for gamma
+pm=rep(p/K,K)
+
+
+if(choose_V==2){
+  ## v2
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .2
+    top_mat[i+1, i] <- .2
+  }
+}else if(choose_V==3){
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.2^abs(i-j)
+    }
+  }
+}else if(choose_V==4){
+  ## v4
+  top_mat_block<-matrix(nrow=p/K,ncol=p/K) #block covariance matrix
+  for (i in c(1:p/K)){
+    for (j in c(1:p/K)){
+      top_mat_block[i,j]=0.5^abs(i-j)
+    }
+  }
+  
+  top_mat<-as.matrix(bdiag(top_mat_block,top_mat_block))
+  top_mat<-as.matrix(bdiag(top_mat,top_mat_block))
+  top_mat<-as.matrix(bdiag(top_mat,top_mat_block))
+  
+}else if(choose_V==5){
+  ## v5
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.5^abs(i-j)
+    }
+  }
+}else if(choose_V==6){
+  ## v6
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .4
+    top_mat[i+1, i] <- .4
+  }
+  
+}else if(choose_V==7){
+  ## v7
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.4^abs(i-j)
+    }
+  }
+}else if(choose_V==8){
+  ## v6
+  top_mat <- diag(1,p)
+  for(i in 1:(p-1)){
+    top_mat[i, i+1] <- .3
+    top_mat[i+1, i] <- .3
+  }
+  
+}else if(choose_V==9){
+  ## v7
+  top_mat<-matrix(nrow=p,ncol=p) #covariance matrix
+  for (i in c(1:p)){
+    for (j in c(1:p)){
+      top_mat[i,j]=0.3^abs(i-j)
+    }
+  }
+}
+
+
+beta_0=c(rep(0,p)) #beta under the null hypothesis
+#------------------------#beta in the alternative with signal strength w rises from 0.05 to 0.2--------------
+beta_1=c(rep(0.05,2),rep(0,p/K-2),rep(0.05,2),rep(0,p/K-2),rep(0.05,2),rep(0,p/K-2),rep(0.05,2),rep(0,p/K-2))
+beta_2=c(rep(0.1,2),rep(0,p/K-2),rep(0.1,2),rep(0,p/K-2),rep(0.1,2),rep(0,p/K-2),rep(0.1,2),rep(0,p/K-2))
+beta_3=c(rep(0.15,2),rep(0,p/K-2),rep(0.15,2),rep(0,p/K-2),rep(0.15,2),rep(0,p/K-2),rep(0.15,2),rep(0,p/K-2))
+beta_4=c(rep(0.2,2),rep(0,p/K-2),rep(0.2,2),rep(0,p/K-2),rep(0.2,2),rep(0,p/K-2),rep(0.2,2),rep(0,p/K-2))
+beta_5=c(rep(0.25,2),rep(0,p/K-2),rep(0.25,2),rep(0,p/K-2),rep(0.25,2),rep(0,p/K-2),rep(0.25,2),rep(0,p/K-2))
+beta_6=c(rep(0.3,2),rep(0,p/K-2),rep(0.3,2),rep(0,p/K-2),rep(0.3,2),rep(0,p/K-2),rep(0.3,2),rep(0,p/K-2))
+beta_7=c(rep(0.35,2),rep(0,p/K-2),rep(0.35,2),rep(0,p/K-2),rep(0.35,2),rep(0,p/K-2),rep(0.35,2),rep(0,p/K-2))
+beta_8=c(rep(0.4,2),rep(0,p/K-2),rep(0.4,2),rep(0,p/K-2),rep(0.4,2),rep(0,p/K-2),rep(0.4,2),rep(0,p/K-2))
+
+
+if(choose_B==1){
+  B_c<-matrix(rnorm(p*r_f[1]),nrow=p) #generate common factor loading or using gaussian.
+}else{
+  B_c<-matrix(runif(p*r_f[1],-sqrt(3),sqrt(3)),nrow=p) #generate common factor loading or using gaussian.
+}
+B_c[,1]<-B_c[,1]/(p^(1/10))
+
+B=B_c
+B_s<-list()
+
+if(choose_B==1){
+  for(k in 1:K){
+    B_s[[k]]<-matrix(rnorm(pm[k]*r_f[k+1],mean = 1),nrow=pm[k])  #generate weak factor loading or using gaussian.
+    B_s[[k]][,1]<- B_s[[k]][,1]/(p^(1/10))
+  }
+}else{
+  for(k in 1:K){
+    B_s[[k]]<-matrix(runif(pm[k]*r_f[k+1],(-sqrt(3)+1),(sqrt(3)+1)),nrow=pm[k])
+    B_s[[k]][,1]<- B_s[[k]][,1]/(p^(1/10))
+  }
+}
+block_diag <- as.matrix(bdiag(B_s[[1]], B_s[[2]]))
+block_diag <- as.matrix(bdiag(block_diag, B_s[[3]]))
+block_diag <- as.matrix(bdiag(block_diag, B_s[[4]]))
+
+B=cbind(B_c,as.matrix(block_diag))
+
+
+repli=1000
+idx3=idx1<-matrix(NA,nrow = 18,ncol = repli+1)
+jji=choose_re_begin
+
+
+if(file.exists(paste0("beta_res_all",choose_re_begin,".csv"))){
+  idx1=read.csv(paste0("beta_res_all",choose_re_begin,".csv"))[,-1]
+  idx3=read.csv(paste0("beta_res_all_true_r_",choose_re_begin,".csv"))[,-1]
+  jji=dim(idx1)[2]-length(which(is.na(idx1[1,])))+choose_re_begin-1
+}
+
+
+
+idx4=idx2=matrix(NA,72,repli+1)
+if(file.exists(paste0("beta_res_all_kk_",choose_re_begin,".csv"))){
+  idx2=read.csv(paste0("beta_res_all_kk_",choose_re_begin,".csv"))[,-1]
+  idx4=read.csv(paste0("beta_res_all_kk_true_r_",choose_re_begin,".csv"))[,-1]
+}
+
+
+idx5=matrix(NA,36,repli+1)
+if(file.exists(paste0("beta_res_joint_kk_",choose_re_begin,".csv"))){
+  idx5=read.csv(paste0("beta_res_joint_kk_",choose_re_begin,".csv"))[,-1]
+}
+idx6=matrix(NA,9,repli+1)
+if(file.exists(paste0("beta_res_joint",choose_re_begin,".csv"))){
+  idx6=read.csv(paste0("beta_res_joint",choose_re_begin,".csv"))[,-1]
+}
+rr_hat1=NULL
+if(file.exists(paste0("ours_rhat",choose_re_begin,".csv"))){
+  rr_hat1=read.csv(paste0("ours_rhat",choose_re_begin,".csv"))[,-1]
+}
+
+
+idx12=matrix(NA,36,repli+1)
+idx10=matrix(NA,72,repli+1)
+
+
+beta_fan<-function(X,n,p,Y,Y3,Y5,Y7,Y9){
+  
+  X<-X-rowMeans(X) #normalize
+  #-----------Use covariance matrix to estimate factors-----------
+  cov<-X%*%t(X)/n #covariance matrix
+  eigvec<-eigen(cov)$vectors
+  eigval<-eigen(cov)$values
+  KK<-which.min(diff(log(eigval[1:10]))) #select number of factors
+  hatf<-sqrt(n)*eigvec[,1:KK] #estimated factors
+  hatB<-t(1/n*t(hatf)%*%X) #estimate factor loading
+  hatU<-X-hatf%*%t(hatB) #estimate idiosyncratic component
+  #-------------------Use Nodewise regression to estimate Theta, the invese matrix of the population covariance------
+  C<-as.matrix(diag(rep(1,p)))
+  T<-c()
+  for( j in 1:ncol(hatU)){
+    fit_u = glmnet(hatU[,-j], hatU[,j], intercept=FALSE,
+                   lambda=cv.glmnet(hatU[,-j], hatU[,j],intercept=FALSE)$lambda.1se)
+    beta<-as.vector(fit_u$beta)
+    C[j,-j]<--beta
+    T<-c(T,1/n*sum((hatU[,j]-hatU[,-j]%*%beta)^2)+fit_u$lambda/2*sum(abs(beta)))
+    
+  }
+  T1<-diag(1/T)
+  Theta<-T1%*%C #estimated Theta
+  #------------------Conduct bootstrap to compute the critical values----------
+  quant<-c() #threshold
+  for (m in 1:5){
+    boostrap<-c()
+    for(j in 1:200){
+      boostrap<-c(boostrap,max(abs(Theta%*%t(hatU)%*%rnorm(n,mean=0,sd=1))))
+    }
+    quant<-c(quant,quantile(boostrap,0.95))
+  }
+  c_alpha<-1/sqrt(n)*mean(quant)
+  
+  sd_alter1<-rcv_fan(Y,X,n) #variances under the alternative
+  # sd_alter2<-rcv_fan(Y2,X,n)
+  
+  sd_alter3<-rcv_fan(Y3,X,n)
+  # sd_alter4<-rcv_fan(Y4,X,n) #variances under the alternative
+  sd_alter5<-rcv_fan(Y5,X,n)
+  # sd_alter6<-rcv_fan(Y6,X,n) #variances under the alternative
+  sd_alter7<-rcv_fan(Y7,X,n)
+  # sd_alter8<-rcv_fan(Y8,X,n) #variances under the alternative
+  sd_alter9<-rcv_fan(Y9,X,n)
+  
+  Y_new1<-Y-1/n*hatf%*%t(hatf)%*%Y
+  # Y_new2<-Y2-1/n*hatf%*%t(hatf)%*%Y2
+  Y_new3<-Y3-1/n*hatf%*%t(hatf)%*%Y3
+  
+  # Y_new4<-Y4-1/n*hatf%*%t(hatf)%*%Y4
+  Y_new5<-Y5-1/n*hatf%*%t(hatf)%*%Y5
+  
+  # Y_new6<-Y6-1/n*hatf%*%t(hatf)%*%Y6
+  Y_new7<-Y7-1/n*hatf%*%t(hatf)%*%Y7
+  
+  # Y_new8<-Y8-1/n*hatf%*%t(hatf)%*%Y8
+  Y_new9<-Y9-1/n*hatf%*%t(hatf)%*%Y9
+  
+  fit1 = glmnet(hatU, Y_new1, intercept=FALSE,
+                lambda=cv.glmnet(hatU,Y_new1,intercept=FALSE)$lambda.1se)
+  
+  # fit2 = glmnet(hatU, Y_new2, intercept=FALSE,
+  #               lambda=cv.glmnet(hatU,Y_new2,intercept=FALSE)$lambda.1se)
+  fit3 = glmnet(hatU, Y_new3, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new2,intercept=FALSE)$lambda.1se)
+  
+  # fit4 = glmnet(hatU, Y_new4, intercept=FALSE,
+  #               lambda=cv.glmnet(hatU,Y_new4,intercept=FALSE)$lambda.1se)
+  fit5 = glmnet(hatU, Y_new5, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new4,intercept=FALSE)$lambda.1se)
+  
+  # fit6 = glmnet(hatU, Y_new6, intercept=FALSE,
+  #               lambda=cv.glmnet(hatU,Y_new6,intercept=FALSE)$lambda.1se)
+  fit7 = glmnet(hatU, Y_new7, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new6,intercept=FALSE)$lambda.1se)
+  
+  # fit8 = glmnet(hatU, Y_new8, intercept=FALSE,
+  #               lambda=cv.glmnet(hatU,Y_new8,intercept=FALSE)$lambda.1se)
+  fit9 = glmnet(hatU, Y_new9, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new8,intercept=FALSE)$lambda.1se)
+  
+  
+  lambda_beta1<-fit1$lambda
+  # lambda_beta2<-fit2$lambda
+  lambda_beta3<-fit3$lambda
+  
+  # lambda_beta4<-fit4$lambda
+  lambda_beta5<-fit5$lambda
+  
+  
+  # lambda_beta6<-fit6$lambda
+  lambda_beta7<-fit7$lambda
+  lambda_beta9<-fit9$lambda
+  # lambda_beta8<-fit8$lambda
+  
+  beta_hat1<-as.vector(fit1$beta)
+  d_beta1<-beta_hat1+1/n*Theta%*%t(hatU)%*%(Y-hatU%*%beta_hat1) #
+  
+  
+  
+  # beta_hat2<-as.vector(fit2$beta)
+  beta_hat3<-as.vector(fit3$beta)
+  # d_beta2<-beta_hat2+1/n*Theta%*%t(hatU)%*%(Y2-hatU%*%beta_hat2) #debiased beta under the alternative
+  d_beta3<-beta_hat3+1/n*Theta%*%t(hatU)%*%(Y3-hatU%*%beta_hat3)
+  
+  
+  # beta_hat4<-as.vector(fit4$beta)
+  beta_hat5<-as.vector(fit5$beta)
+  # d_beta4<-beta_hat4+1/n*Theta%*%t(hatU)%*%(Y4-hatU%*%beta_hat4) #debiased beta under the alternative
+  d_beta5<-beta_hat5+1/n*Theta%*%t(hatU)%*%(Y5-hatU%*%beta_hat5)
+  
+  
+  # beta_hat6<-as.vector(fit6$beta)
+  beta_hat7<-as.vector(fit7$beta)
+  # d_beta6<-beta_hat6+1/n*Theta%*%t(hatU)%*%(Y6-hatU%*%beta_hat6) #debiased beta under the alternative
+  d_beta7<-beta_hat7+1/n*Theta%*%t(hatU)%*%(Y7-hatU%*%beta_hat7)
+  
+  
+  # beta_hat8<-as.vector(fit8$beta)
+  beta_hat9<-as.vector(fit9$beta)
+  # d_beta8<-beta_hat8+1/n*Theta%*%t(hatU)%*%(Y8-hatU%*%beta_hat8) #debiased beta under the alternative
+  d_beta9<-beta_hat9+1/n*Theta%*%t(hatU)%*%(Y9-hatU%*%beta_hat9)
+  
+  
+  
+  
+  idx1<-c()
+  # idx2<-c()
+  idx3<-c()
+  # idx4<-c()
+  idx5<-c()
+  # idx6<-c()
+  idx7<-c()
+  # idx8<-c()
+  idx9<-c()
+  
+  
+  idx1<-c(idx1,sum(sqrt(n)*max(abs(d_beta1))/sqrt(sd_alter1[1])>c_alpha))
+  # idx4<-c(idx4,sum(sqrt(n)*max(abs(d_beta4))/sqrt(sd_alter4[1])>c_alpha)) #size of the test under the alternative
+  idx5<-c(idx5,sum(sqrt(n)*max(abs(d_beta5))/sqrt(sd_alter5[1])>c_alpha))
+  # idx2<-c(idx2,sum(sqrt(n)*max(abs(d_beta2))/sqrt(sd_alter2[1])>c_alpha)) #size of the test under the alternative
+  idx3<-c(idx3,sum(sqrt(n)*max(abs(d_beta3))/sqrt(sd_alter3[1])>c_alpha))
+  # idx6<-c(idx6,sum(sqrt(n)*max(abs(d_beta6))/sqrt(sd_alter6[1])>c_alpha)) #size of the test under the alternative
+  idx7<-c(idx7,sum(sqrt(n)*max(abs(d_beta7))/sqrt(sd_alter7[1])>c_alpha))
+  # idx8<-c(idx8,sum(sqrt(n)*max(abs(d_beta8))/sqrt(sd_alter8[1])>c_alpha)) #size of the test under the alternative
+  idx9<-c(idx9,sum(sqrt(n)*max(abs(d_beta9))/sqrt(sd_alter9[1])>c_alpha))
+  
+  res=c(idx1,idx3,idx5,idx7,idx9)
+  return(res)
+  
+}
+beta_fan<-function(X,n,p,Y,Y2,Y3,Y4,Y5,Y6,Y7,Y8,Y9){
+  
+  X<-X-rowMeans(X) #normalize
+  #-----------Use covariance matrix to estimate factors-----------
+  cov<-X%*%t(X)/n #covariance matrix
+  eigvec<-eigen(cov)$vectors
+  eigval<-eigen(cov)$values
+  KK<-which.min(diff(log(eigval[1:10]))) #select number of factors
+  hatf<-sqrt(n)*eigvec[,1:KK] #estimated factors
+  hatB<-t(1/n*t(hatf)%*%X) #estimate factor loading
+  hatU<-X-hatf%*%t(hatB) #estimate idiosyncratic component
+  #-------------------Use Nodewise regression to estimate Theta, the invese matrix of the population covariance------
+  C<-as.matrix(diag(rep(1,p)))
+  T<-c()
+  for( j in 1:ncol(hatU)){
+    fit_u = glmnet(hatU[,-j], hatU[,j], intercept=FALSE,
+                   lambda=cv.glmnet(hatU[,-j], hatU[,j],intercept=FALSE)$lambda.1se)
+    beta<-as.vector(fit_u$beta)
+    C[j,-j]<--beta
+    T<-c(T,1/n*sum((hatU[,j]-hatU[,-j]%*%beta)^2)+fit_u$lambda/2*sum(abs(beta)))
+    
+  }
+  T1<-diag(1/T)
+  Theta<-T1%*%C #estimated Theta
+  #------------------Conduct bootstrap to compute the critical values----------
+  quant<-c() #threshold
+  for (m in 1:5){
+    boostrap<-c()
+    for(j in 1:200){
+      boostrap<-c(boostrap,max(abs(Theta%*%t(hatU)%*%rnorm(n,mean=0,sd=1))))
+    }
+    quant<-c(quant,quantile(boostrap,0.95))
+  }
+  c_alpha<-1/sqrt(n)*mean(quant)
+  
+  sd_alter1<-rcv_fan(Y,X,n) #variances under the alternative
+  sd_alter2<-rcv_fan(Y2,X,n)
+  
+  sd_alter3<-rcv_fan(Y3,X,n)
+  sd_alter4<-rcv_fan(Y4,X,n) #variances under the alternative
+  sd_alter5<-rcv_fan(Y5,X,n)
+  sd_alter6<-rcv_fan(Y6,X,n) #variances under the alternative
+  sd_alter7<-rcv_fan(Y7,X,n)
+  sd_alter8<-rcv_fan(Y8,X,n) #variances under the alternative
+  sd_alter9<-rcv_fan(Y9,X,n)
+  
+  Y_new1<-Y-1/n*hatf%*%t(hatf)%*%Y
+  Y_new2<-Y2-1/n*hatf%*%t(hatf)%*%Y2
+  Y_new3<-Y3-1/n*hatf%*%t(hatf)%*%Y3
+  
+  Y_new4<-Y4-1/n*hatf%*%t(hatf)%*%Y4
+  Y_new5<-Y5-1/n*hatf%*%t(hatf)%*%Y5
+  
+  Y_new6<-Y6-1/n*hatf%*%t(hatf)%*%Y6
+  Y_new7<-Y7-1/n*hatf%*%t(hatf)%*%Y7
+  
+  Y_new8<-Y8-1/n*hatf%*%t(hatf)%*%Y8
+  Y_new9<-Y9-1/n*hatf%*%t(hatf)%*%Y9
+  
+  fit1 = glmnet(hatU, Y_new1, intercept=FALSE,
+                lambda=cv.glmnet(hatU,Y_new1,intercept=FALSE)$lambda.1se)
+  
+  fit2 = glmnet(hatU, Y_new2, intercept=FALSE,
+                lambda=cv.glmnet(hatU,Y_new2,intercept=FALSE)$lambda.1se)
+  fit3 = glmnet(hatU, Y_new3, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new2,intercept=FALSE)$lambda.1se)
+  
+  fit4 = glmnet(hatU, Y_new4, intercept=FALSE,
+                lambda=cv.glmnet(hatU,Y_new4,intercept=FALSE)$lambda.1se)
+  fit5 = glmnet(hatU, Y_new5, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new4,intercept=FALSE)$lambda.1se)
+  
+  fit6 = glmnet(hatU, Y_new6, intercept=FALSE,
+                lambda=cv.glmnet(hatU,Y_new6,intercept=FALSE)$lambda.1se)
+  fit7 = glmnet(hatU, Y_new7, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new6,intercept=FALSE)$lambda.1se)
+  
+  fit8 = glmnet(hatU, Y_new8, intercept=FALSE,
+                lambda=cv.glmnet(hatU,Y_new8,intercept=FALSE)$lambda.1se)
+  fit9 = glmnet(hatU, Y_new9, intercept=FALSE,lambda=cv.glmnet(hatU,Y_new8,intercept=FALSE)$lambda.1se)
+  
+  
+  lambda_beta1<-fit1$lambda
+  lambda_beta2<-fit2$lambda
+  lambda_beta3<-fit3$lambda
+  
+  lambda_beta4<-fit4$lambda
+  lambda_beta5<-fit5$lambda
+  
+  
+  lambda_beta6<-fit6$lambda
+  lambda_beta7<-fit7$lambda
+  lambda_beta9<-fit9$lambda
+  lambda_beta8<-fit8$lambda
+  
+  beta_hat1<-as.vector(fit1$beta)
+  d_beta1<-beta_hat1+1/n*Theta%*%t(hatU)%*%(Y-hatU%*%beta_hat1) #
+  
+  
+  
+  beta_hat2<-as.vector(fit2$beta)
+  beta_hat3<-as.vector(fit3$beta)
+  d_beta2<-beta_hat2+1/n*Theta%*%t(hatU)%*%(Y2-hatU%*%beta_hat2) #debiased beta under the alternative
+  d_beta3<-beta_hat3+1/n*Theta%*%t(hatU)%*%(Y3-hatU%*%beta_hat3)
+  
+  
+  beta_hat4<-as.vector(fit4$beta)
+  beta_hat5<-as.vector(fit5$beta)
+  d_beta4<-beta_hat4+1/n*Theta%*%t(hatU)%*%(Y4-hatU%*%beta_hat4) #debiased beta under the alternative
+  d_beta5<-beta_hat5+1/n*Theta%*%t(hatU)%*%(Y5-hatU%*%beta_hat5)
+  
+  
+  beta_hat6<-as.vector(fit6$beta)
+  beta_hat7<-as.vector(fit7$beta)
+  d_beta6<-beta_hat6+1/n*Theta%*%t(hatU)%*%(Y6-hatU%*%beta_hat6) #debiased beta under the alternative
+  d_beta7<-beta_hat7+1/n*Theta%*%t(hatU)%*%(Y7-hatU%*%beta_hat7)
+  
+  
+  beta_hat8<-as.vector(fit8$beta)
+  beta_hat9<-as.vector(fit9$beta)
+  d_beta8<-beta_hat8+1/n*Theta%*%t(hatU)%*%(Y8-hatU%*%beta_hat8) #debiased beta under the alternative
+  d_beta9<-beta_hat9+1/n*Theta%*%t(hatU)%*%(Y9-hatU%*%beta_hat9)
+  
+  
+  
+  
+  idx1<-c()
+  idx2<-c()
+  idx3<-c()
+  idx4<-c()
+  idx5<-c()
+  idx6<-c()
+  idx7<-c()
+  idx8<-c()
+  idx9<-c()
+  
+  
+  idx1<-c(idx1,sum(sqrt(n)*max(abs(d_beta1))/sqrt(sd_alter1[1])>c_alpha))
+  idx4<-c(idx4,sum(sqrt(n)*max(abs(d_beta4))/sqrt(sd_alter4[1])>c_alpha)) #size of the test under the alternative
+  idx5<-c(idx5,sum(sqrt(n)*max(abs(d_beta5))/sqrt(sd_alter5[1])>c_alpha))
+  idx2<-c(idx2,sum(sqrt(n)*max(abs(d_beta2))/sqrt(sd_alter2[1])>c_alpha)) #size of the test under the alternative
+  idx3<-c(idx3,sum(sqrt(n)*max(abs(d_beta3))/sqrt(sd_alter3[1])>c_alpha))
+  idx6<-c(idx6,sum(sqrt(n)*max(abs(d_beta6))/sqrt(sd_alter6[1])>c_alpha)) #size of the test under the alternative
+  idx7<-c(idx7,sum(sqrt(n)*max(abs(d_beta7))/sqrt(sd_alter7[1])>c_alpha))
+  idx8<-c(idx8,sum(sqrt(n)*max(abs(d_beta8))/sqrt(sd_alter8[1])>c_alpha)) #size of the test under the alternative
+  idx9<-c(idx9,sum(sqrt(n)*max(abs(d_beta9))/sqrt(sd_alter9[1])>c_alpha))
+  
+  res=c(idx1,idx2,idx3,idx4,idx5,idx6,idx7,idx8,idx9)
+  return(res)
+  
+}
+
+if(jji!=(choose_re_begin+20)){
+  for (i in  c((jji+1):(choose_re_begin+19))){ #repeat 1000 times
+    set.seed(i+2000)
+    if (choose_F==1){
+      F<-matrix(rnorm(n*r_all),nrow=n) #generate factor
+    }else{
+      F_start=rnorm(r_all)
+      F_origin=F_start
+      for (t in c(1:200)){
+        F_start=Phi%*%F_origin+rnorm(r_all)
+        F_origin=F_start
+      }
+      F<-matrix(nrow=n,ncol=r_all) #factor
+      for (t in c(1:n)){
+        F_start=Phi%*%F_origin+rnorm(r_all)###notice
+        F_origin=F_start
+        F[t,]<-F_start
+      }
+    }
+    
+    
+    if(choose_V==1){
+      V<-matrix(rnorm(n*p),nrow=n)
+    }else{
+      V<-mvrnorm(n, rep(0,p),top_mat) #generate idiosyncratic component
+    }
+    
+    
+    X=F%*%t(B)+V #design matrix
+    
+    
+    ss=1
+    XX=list()
+    for(k in 1:K){
+      XX[[k]]=X[,ss:(ss+pm[k]-1)]
+      ss=ss+pm[k]
+    }
+    
+    
+    #---------------- Main Procedures -------------------
+ 
+      Y=F%*%gamma1+rnorm(n,0,.6) #response under the null}
+    
+    
+    #------------Response under the alternative-------------
+    Y2=Y+V%*%beta_1
+    Y3=Y+V%*%beta_2
+    Y4=Y+V%*%beta_3
+    Y5=Y+V%*%beta_4
+    
+    Y6=Y+V%*%beta_5
+    Y7=Y+V%*%beta_6
+    Y8=Y+V%*%beta_7
+    Y9=Y+V%*%beta_8
+    
+    t1=Sys.time()
+    #---------ours-----------
+    if(!(file.exists(paste0("res_fac1_",i,".rdata")))){
+      res_fac1 = estimation_fac(XX, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3",  factor_res=NULL,nodewise_step=TRUE,boot_rep=5,boot_each=500,alpha=0.05)
+      
+      save(res_fac1,file=paste0("res_fac1_",i,".rdata"))
+    }else{
+      load(paste0("res_fac1_",i,".rdata"))
+    }
+    
+    rr_hat1=rbind(rr_hat1,res_fac1[["rr_hat"]])
+    write.csv(rr_hat1,file=paste0("ours_rhat",choose_re_begin,".csv"))
+    
+    fit_e1 = estimation(XX,Y, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit1=betatest(XX,Y,K,fit_e1,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    
+    idx1[1,i+1]<-fit1$pvals[1]<0.05
+    idx2[1:4,i+1]<-fit1$pvals[2:5]<0.05
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    fit_e2 = estimation(XX,Y2, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit2=betatest(XX,Y2,K,fit_e2,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    idx1[2,i+1]<-fit2$pvals[1]<0.05
+    idx2[5:8,i+1]<-fit2$pvals[2:5]<0.05
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    fit_e3 = estimation(XX,Y3, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit3=betatest(XX,Y3,K,fit_e3,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    
+    idx1[3,i+1]<-fit3$pvals[1]<0.05
+    idx2[9:12,i+1]<-fit3$pvals[2:5]<0.05
+    
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    
+    
+    fit_e4 = estimation(XX,Y4, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit4=betatest(XX,Y4,K,fit_e4,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    idx1[4,i+1]<-fit4$pvals[1]<0.05
+    idx2[13:16,i+1]<-fit4$pvals[2:5]<0.05
+    
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    fit_e5 = estimation(XX,Y5, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit5=betatest(XX,Y5,K,fit_e5,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    
+    idx1[5,i+1]<-fit5$pvals[1]<0.05
+    idx2[17:20,i+1]<-fit5$pvals[2:5]<0.05
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    
+    fit_e6 = estimation(XX,Y6, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit6=betatest(XX,Y6,K,fit_e6,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    idx1[6,i+1]<-fit6$pvals[1]<0.05
+    idx2[21:24,i+1]<-fit6$pvals[2:5]<0.05
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    
+    fit_e7 = estimation(XX,Y7, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit7=betatest(XX,Y7,K,fit_e7,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    idx1[7,i+1]<-fit7$pvals[1]<0.05
+    idx2[25:28,i+1]<-fit7$pvals[2:5]<0.05
+    
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    
+    fit_e8 = estimation(XX,Y8,K,rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit8=betatest(XX,Y8,K,fit_e8,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    idx1[8,i+1]<-fit8$pvals[1]<0.05
+    idx2[29:32,i+1]<-fit8$pvals[2:5]<0.05
+    
+    
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    fit_e9 = estimation(XX,Y9, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac1)
+    fit9=betatest(XX,Y9,K,fit_e9,rmax=10,method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep = 5,boot_each = 500)
+    
+    idx1[9,i+1]<-fit9$pvals[1]<0.05
+    idx2[33:36,i+1]<-fit9$pvals[2:5]<0.05
+    
+    
+    write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    t2=Sys.time()
+    cat('time for ours: ', as.numeric(t2 - t1, units = "hours"), ' hours\n')
+    
+    # fit11=suppressWarnings(betatest_joint(XX,Y,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e1,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # idx6[1,i+1]<-fit11$pvals[1]<0.05
+    # idx5[1:4,i+1]=fit11$pvals[2:5]<0.05
+    # write.csv(idx5,paste0("beta_res_joint_kk_",choose_re_begin,".csv"))
+    # write.csv(idx6,paste0("beta_res_joint",choose_re_begin,".csv"))
+    # # fit21=suppressWarnings(betatest_joint(XX,Y2,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e2,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # # idx5[2,i+1]<-fit21$pvals[1]<0.05
+    # # idx5[5:8,i+1]=fit21$pvals[2:5]<0.05
+    # fit31=suppressWarnings(betatest_joint(XX,Y3,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e3,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # idx6[3,i+1]<-fit31$pvals[1]<0.05
+    # idx5[9:12,i+1]=fit31$pvals[2:5]<0.05
+    #
+    # write.csv(idx5,paste0("beta_res_joint_kk_",choose_re_begin,".csv"))
+    # write.csv(idx6,paste0("beta_res_joint",choose_re_begin,".csv"))
+    # # fit41=suppressWarnings(betatest_joint(XX,Y4,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e4,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # # idx6[4,i+1]<-fit41$pvals[1]<0.05
+    # # idx5[13:16,i+1]<-fit41$pvals[2:5]<0.05
+    # fit51=suppressWarnings(betatest_joint(XX,Y5,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e5,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # idx6[5,i+1]<-fit51$pvals[1]<0.05
+    # idx5[17:20,i+1]=fit51$pvals[2:5]<0.05
+    #
+    # write.csv(idx5,paste0("beta_res_joint_kk_",choose_re_begin,".csv"))
+    # write.csv(idx6,paste0("beta_res_joint",choose_re_begin,".csv"))
+    # # fit61=suppressWarnings(betatest_joint(XX,Y6,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e6,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # # idx6[6,i+1]<-fit61$pvals[1]<0.05
+    # # idx5[21:24,i+1]=fit61$pvals[2:5]<0.05
+    # fit71=suppressWarnings(betatest_joint(XX,Y7,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e7,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # idx6[7,i+1]<-fit71$pvals[1]<0.05
+    # idx5[25:28,i+1]=fit71$pvals[2:5]<0.05
+    #
+    # write.csv(idx5,paste0("beta_res_joint_kk_",choose_re_begin,".csv"))
+    # write.csv(idx6,paste0("beta_res_joint",choose_re_begin,".csv"))
+    # # fit81=suppressWarnings(betatest_joint(XX,Y8,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e8,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # # idx6[8,i+1]<-fit81$pvals[1]<0.05
+    # # idx5[29:32,i+1]=fit81$pvals[2:5]<0.05
+    # fit91=suppressWarnings(betatest_joint(XX,Y9,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit_e9,r_update=TRUE,boot_rep=5,boot_each=500,lam_in_iteration=TRUE))
+    # idx6[9,i+1]<-fit91$pvals[1]<0.05
+    # idx5[33:36,i+1]=fit91$pvals[2:5]<0.05
+    #
+    # write.csv(idx5,paste0("beta_res_joint_kk_",choose_re_begin,".csv"))
+    # write.csv(idx6,paste0("beta_res_joint",choose_re_begin,".csv"))
+    #
+    # t3=Sys.time()
+    # cat('time for joint: ', as.numeric(t3 - t2, units = "hours"), ' hours\n')
+    
+    
+    # #---------oracle-based betatest with true factor/loading-----------
+    # factor_res1=NULL
+    # factor_res1$loading_G=B_c
+    # factor_res1$loading_F=as.matrix(block_diag)
+    # factor_res1$Ghat=F[,1:2]
+    # factor_res1$Fhat=list()
+    # rtmp=3
+    # for(k in 1:K){
+    #   factor_res1$Fhat[[k]]=F[,(rtmp):(rtmp+1)]
+    #   rtmp=rtmp+2
+    # }
+    # factor_res1$residual=list()
+    # ptmp=1
+    # for(k in 1:K){
+    #   factor_res1$residual[[k]]=V[,ptmp:(ptmp+pm[k]-1)]
+    #   ptmp=ptmp+pm[k]
+    # }
+    #
+    #
+    # if(!(file.exists(paste0("res_fac_",i,".rdata")))){
+    #   res_fac = estimation_fac(XX, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3",  factor_res=factor_res1,nodewise_step=TRUE,boot_rep=5,boot_each=500,alpha=0.05)
+    #   save(res_fac,file=paste0("res_fac_",i,".rdata"))
+    #
+    # }else{
+    #   load(paste0("res_fac_",i,".rdata"))
+    # }
+    #
+    # fit = estimation(XX,Y, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit1=betatest(XX,Y,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y2, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit2=betatest(XX,Y2,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y3, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit3=betatest(XX,Y3,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y4, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit4=betatest(XX,Y4,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y5, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit5=betatest(XX,Y5,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y6, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit6=betatest(XX,Y6,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y7, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit7=betatest(XX,Y7,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y8, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit8=betatest(XX,Y8,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y9, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=factor_res1,nodewise_step=TRUE,res_fac =res_fac)
+    # fit9=betatest(XX,Y9,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=factor_res1,boot_rep=5,boot_each=500)
+    #
+    #
+    # #-------------------Compute the size of the test or power of the test----------------------
+    # idx1[10,i+1]<-fit1$pvals[1]<0.05
+    # idx1[11,i+1]<-fit2$pvals[1]<0.05
+    # idx1[12,i+1]<-fit3$pvals[1]<0.05
+    # idx1[13,i+1]<-fit4$pvals[1]<0.05
+    # idx1[14,i+1]<-fit5$pvals[1]<0.05
+    # idx1[15,i+1]<-fit6$pvals[1]<0.05
+    # idx1[16,i+1]<-fit7$pvals[1]<0.05
+    # idx1[17,i+1]<-fit8$pvals[1]<0.05
+    # idx1[18,i+1]<-fit9$pvals[1]<0.05
+    #
+    #
+    # idx2[37:40,i+1]=fit1$pvals[2:5]<0.05
+    # idx2[41:44,i+1]=fit2$pvals[2:5]<0.05
+    # idx2[45:48,i+1]=fit3$pvals[2:5]<0.05
+    # idx2[49:52,i+1]=fit4$pvals[2:5]<0.05
+    # idx2[53:56,i+1]=fit5$pvals[2:5]<0.05
+    # idx2[57:60,i+1]=fit6$pvals[2:5]<0.05
+    # idx2[61:64,i+1]=fit7$pvals[2:5]<0.05
+    # idx2[65:68,i+1]=fit8$pvals[2:5]<0.05
+    # idx2[69:72,i+1]=fit9$pvals[2:5]<0.05
+    
+    
+    
+    
+    
+    # write.csv(idx2,paste0("beta_res_all_kk_",choose_re_begin,".csv"))
+    #
+    # write.csv(idx1,paste0("beta_res_all",choose_re_begin,".csv"))
+    
+    
+    
+    # t4=Sys.time()
+    # cat('time for oracle: ',  as.numeric(t4 - t3, units = "hours"), ' hours\n')
+    
+    
+    
+    
+    
+    
+    #---------semi-oracle-based betatest with true r-----------
+    # if(!(file.exists(paste0("res_fac_semi_",i,".rdata")))){
+    #
+    #   res_fac = estimation_fac(XX, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3",  factor_res=NULL,nodewise_step=TRUE,boot_rep=5,boot_each=500,alpha=0.05)
+    #   save(res_fac,file=paste0("res_fac_semi_",i,".rdata"))
+    #
+    # }else{
+    #   load(paste0("res_fac_semi_",i,".rdata"))
+    # }
+    #
+    #
+    # fit = estimation(XX,Y, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit1=betatest(XX,Y,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y2, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit2=betatest(XX,Y2,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y3, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit3=betatest(XX,Y3,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y4, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit4=betatest(XX,Y4,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y5, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit5=betatest(XX,Y5,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y6, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit6=betatest(XX,Y6,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y7, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit7=betatest(XX,Y7,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y8, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit8=betatest(XX,Y8,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    # fit = estimation(XX,Y9, K, rmax=10, r0=2, r=rep(2,K), method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit9=betatest(XX,Y9,K,fit=fit,rmax=10,r0=2,r=rep(2,K),method='gap',weight=TRUE, type = "BIC3",lambda.seq=NULL,alpha=0.05,factor_res=NULL,boot_rep=5,boot_each=500)
+    #
+    #
+    # #-------------------Compute the size of the test or power of the test----------------------
+    # idx3[10,i+1]<-fit1$pvals[1]<0.05
+    # idx3[11,i+1]<-fit2$pvals[1]<0.05
+    # idx3[12,i+1]<-fit3$pvals[1]<0.05
+    # idx3[13,i+1]<-fit4$pvals[1]<0.05
+    # idx3[14,i+1]<-fit5$pvals[1]<0.05
+    # idx3[15,i+1]<-fit6$pvals[1]<0.05
+    # idx3[16,i+1]<-fit7$pvals[1]<0.05
+    # idx3[17,i+1]<-fit8$pvals[1]<0.05
+    # idx3[18,i+1]<-fit9$pvals[1]<0.05
+    #
+    #
+    # idx4[37:40,i+1]=fit1$pvals[2:5]<0.05
+    # idx4[41:44,i+1]=fit2$pvals[2:5]<0.05
+    # idx4[45:48,i+1]=fit3$pvals[2:5]<0.05
+    # idx4[49:52,i+1]=fit4$pvals[2:5]<0.05
+    # idx4[53:56,i+1]=fit5$pvals[2:5]<0.05
+    # idx4[57:60,i+1]=fit6$pvals[2:5]<0.05
+    # idx4[61:64,i+1]=fit7$pvals[2:5]<0.05
+    # idx4[65:68,i+1]=fit8$pvals[2:5]<0.05
+    # idx4[69:72,i+1]=fit9$pvals[2:5]<0.05
+    
+    
+    
+    # t5=Sys.time()
+    # cat('time for semi-oracle: ', as.numeric(t5 - t4, units = "hours"), ' hours\n')
+    
+    
+    
+    #-----------------Fan---------------
+    res_fan=beta_fan(X,n,p,Y,Y2,Y3,Y4,Y5,Y6,Y7,Y8,Y9)
+    
+    
+    idx3[1,i+1]<-res_fan[1] #size of the test under the null
+    idx3[2,i+1]<-res_fan[2] #size of the test under the alternative
+    idx3[3,i+1]<-res_fan[3]
+    idx3[4,i+1]<-res_fan[4]
+    idx3[5,i+1]<-res_fan[5]
+    idx3[6,i+1]<-res_fan[6] #size of the test under the alternative
+    idx3[7,i+1]<-res_fan[7]
+    idx3[8,i+1]<-res_fan[8]
+    idx3[9,i+1]<-res_fan[9]
+    
+    # tmp=rowMeans(idx3[,-1],na.rm=T)
+    
+    # idx3[,1]=tmp
+    write.csv(idx3,paste0("beta_res_all_true_r_",choose_re_begin,".csv"))
+    
+    t6=Sys.time()
+    cat('time for fan: ', as.numeric(t6 - t1, units = "hours"), ' hours\n')
+    #-----------------Li0--------------
+    reli=li_estimate_f(X,XX,K,n,p,Y,Y2,Y3,Y4,Y5,Y6,Y7,Y8,Y9)
+    f_hat_li=reli$hatf_all
+    lam=c(0.3,0.01,0.1,0.05,0.005)
+    res=rep(0,K)
+    ss=1
+    for(k in 1:K){
+      res[k]=li_betam(Y,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[1])
+      ss=ss+pm[k]
+    }
+    id_li=res
+    
+    
+    
+    idx4[1:4,i+1]=id_li
+    
+    
+    #
+    #     tmp=rowMeans(idx4[,-1],na.rm=T)
+    #     idx4[,1]=tmp
+    write.csv(idx4,paste0("beta_res_all_kk_true_r_",choose_re_begin,".csv"))
+    
+    # res=rep(0,K)
+    # ss=1
+    # for(k in 1:K){
+    #   res[k]=li_betam(Y2,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[2])
+    #   ss=ss+pm[k]
+    # }
+    # id_li2=res
+    
+    res=rep(0,K)
+    ss=1
+    for(k in 1:K){
+      res[k]=li_betam(Y3,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[3])
+      ss=ss+pm[k]
+    }
+    id_li3=res
+    
+    
+    # idx4[5:8,i+1]=id_li2
+    idx4[9:12,i+1]=id_li3
+    
+    #
+    #     tmp=rowMeans(idx4[,-1],na.rm=T)
+    #     idx4[,1]=tmp
+    write.csv(idx4,paste0("beta_res_all_kk_true_r_",choose_re_begin,".csv"))
+    
+    # ss=1
+    # res=rep(0,K)
+    # for(k in 1:K){
+    #   res[k]=li_betam(Y4,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[4])
+    #   ss=ss+pm[k]
+    # }
+    # id_li4=res
+    
+    ss=1
+    res=rep(0,K)
+    for(k in 1:K){
+      res[k]=li_betam(Y5,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[5])
+      ss=ss+pm[k]
+    }
+    id_li5=res
+    
+    
+    # idx4[13:16,i+1]=id_li4
+    idx4[17:20,i+1]=id_li5
+    # idx4[21:24,i+1]=id_li6
+    # idx4[25:28,i+1]=id_li7
+    # idx4[29:32,i+1]=id_li8
+    # idx4[33:36,i+1]=id_li9
+    
+    #
+    #     tmp=rowMeans(idx4[,-1],na.rm=T)
+    #     idx4[,1]=tmp
+    write.csv(idx4,paste0("beta_res_all_kk_true_r_",choose_re_begin,".csv"))
+    
+    
+    # ss=1
+    # res=rep(0,K)
+    # for(k in 1:K){
+    #   res[k]=li_betam(Y6,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[6])
+    #   ss=ss+pm[k]
+    # }
+    # id_li6=res
+    
+    # ss=1
+    # res=rep(0,K)
+    # for(k in 1:K){
+    #   res[k]=li_betam(Y7,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[7])
+    #   ss=ss+pm[k]
+    # }
+    # id_li7=res
+    
+    # ss=1
+    # res=rep(0,K)
+    # for(k in 1:K){
+    #   res[k]=li_betam(Y8,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[8])
+    #   ss=ss+pm[k]
+    # }
+    # id_li8=res
+    
+    # ss=1
+    # res=rep(0,K)
+    # for(k in 1:K){
+    #   res[k]=li_betam(Y9,X[,-c(ss:(ss+pm[k]-1))],f_hat_li[[k]],lambda2=lam,reli$sigma[9])
+    #   ss=ss+pm[k]
+    # }
+    # id_li9=res
+    
+    
+    
+    
+    
+    
+    
+    
+    t7=Sys.time()
+    cat('time for li: ', as.numeric(t7 - t6, units = "hours"), ' hours\n')
+    
+    
+    
+    res_fac = estimation_fac(XX, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3",  factor_res=NULL,nodewise_step=FALSE,boot_rep=1,boot_each=500,alpha=0.05)
+    
+    #---------joint betatest with r updating-----------
+    fit<- estimation(XX,Y, K, rmax=10, r0=NULL, r=NULL, method='gap', weight=TRUE, type="BIC3", lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit1=betatest_joint(XX,Y,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[1,i+1]<-fit1$pvals[1]<0.05
+    idx12[1:4,i+1]=fit1$pvals[2:5]<0.05
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    fit<-estimation(XX,Y2,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit2=betatest_joint(XX,Y2,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[2,i+1]<-fit2$pvals[1]<0.05
+    idx12[5:8,i+1]=fit2$pvals[2:5]<0.05
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    fit<-estimation(XX,Y3,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit3=betatest_joint(XX,Y3,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[3,i+1]<-fit3$pvals[1]<0.05
+    idx12[9:12,i+1]=fit3$pvals[2:5]<0.05
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    
+    
+    fit<-estimation(XX,Y4,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit4=betatest_joint(XX,Y4,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[4,i+1]<-fit4$pvals[1]<0.05
+    idx12[13:16,i+1]=fit4$pvals[2:5]<0.05
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    fit<-estimation(XX,Y5,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit5=betatest_joint(XX,Y5,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[5,i+1]<-fit5$pvals[1]<0.05
+    idx12[17:20,i+1]=fit5$pvals[2:5]<0.05
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    
+    fit<-estimation(XX,Y6,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit6=betatest_joint(XX,Y6,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[6,i+1]<-fit6$pvals[1]<0.05
+    idx12[21:24,i+1]=fit6$pvals[2:5]<0.05
+    
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    
+    fit<-estimation(XX,Y7,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit7=betatest_joint(XX,Y7,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[7,i+1]<-fit7$pvals[1]<0.05
+    idx12[25:28,i+1]=fit7$pvals[2:5]<0.05
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    
+    
+    fit<-estimation(XX,Y8,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    fit8=betatest_joint(XX,Y8,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    idx10[8,i+1]<-fit8$pvals[1]<0.05
+    idx12[29:32,i+1]=fit8$pvals[2:5]<0.05
+    
+    write.csv(idx10,paste0("joint_kk_",choose_re_begin,".csv"))
+    write.csv(idx12,paste0("joint_all",choose_re_begin,".csv"))
+    # fit<-estimation(XX,Y9,K,rmax=10,method='gap',weight=TRUE,type="BIC3",lambda.seq=NULL, factor_res=NULL,nodewise_step=TRUE,res_fac =res_fac)
+    # fit9=betatest_joint(XX,Y9,K,rmax=10,r0=NULL,r=NULL,method='gap',weight=TRUE, type = "BIC3",lambda=seq(.1,0.01,length.out=10),alpha=0.05,factor_res=NULL,fit=fit,r_update=TRUE,boot_rep=1,boot_each=500,lam_in_iteration=TRUE)
+    #
+    # idx1[9,i+1]<-fit9$pvals[1]<0.05
+    #
+    # idx2[33:36,i+1]=fit9$pvals[2:5]<0.05
+    
+    
+  }
+}
+

@@ -1,0 +1,61 @@
+library(GrFA)
+library(ncvreg)
+library(Matrix)
+library(glmnet)
+library(SIS)
+library(MASS)
+
+library(here)
+load(here::here("realdata", "Results", "fit_allsample.Rdata"))
+
+devtools::load_all(here::here("InferMultiModal"))
+
+source(here::here("alternative","beta_li.R"), echo=TRUE)
+
+file_data = here::here("Data","RealData","ProcessedData","lung_data.RData")
+
+
+
+
+
+set.seed(1)
+K=4
+load(file_data)
+Y=lung_df[,1]
+X=lung_df[,-1]
+pm=c(300,300,300,194)
+p=sum(pm)
+n=nrow(X)
+p=sum(pm)
+
+
+##----whole data----
+tmp_mean <- colMeans(X)
+X_train <- scale(X, center = tmp_mean, scale = FALSE)
+
+factor_res1=NULL
+tmp_mean <- mean(Y)
+y_train <- Y-tmp_mean
+
+ss=1
+XX_train=list()
+for(k in 1:K){
+  XX_train[[k]]=as.matrix(X_train[,ss:(ss+pm[k]-1)])
+  ss=ss+pm[k]
+}
+
+set.seed(123)
+res_ori = estimation_fac(XX_train, K, rmax=10, method='gap', weight=TRUE, type='BIC3',  factor_res=factor_res1,nodewise_step=TRUE,boot_rep=1,boot_each=2500,alpha=0.05)
+save(res_ori,file=here::here("realdata","Results","res_allsample.Rdata"))
+fit_e111 = estimation(XX_train,y_train, K, rmax=10, method='gap', weight=TRUE, type='BIC3', lambda.seq =seq(1,.01,length.out=100), factor_res=factor_res1,res_fac =res_ori,gamma_MCP =3,tun_ncvreg='CV')
+
+fit_ori<-betatest(XX_train,y_train,K,fit_e111,rmax=10,method='gap',weight=TRUE, type ='BIC3',alpha=0.05,factor_res=factor_res1,lambda.seq =seq(1,.01,length.out=100),boot_each = 2500,boot_rep = 1,gamma_MCP =3,seed_sis=123,tune_sis='ebic',tun_ncvreg='CV')
+
+gres_ori=gammatest(XX_train,y_train,K,ratio1=.79,ratio2=.89,rmax=10,method='gap',weight=TRUE,lambda.seq =seq(1,.01,length.out=100),r_f=c(1,2,3,9,3),alpha=0.05,type="BIC3",factor_res=factor_res1,gamma_MCP =3,seed_sis=1,tune_sis ='ebic',tun_ncvreg='CV')#specific
+
+save(gres_ori,file=here::here("realdata","Results","gamma_allsample.Rdata"))
+save(fit_ori,file=here::here("realdata","Results","fit_allsample.Rdata"))
+
+
+
+

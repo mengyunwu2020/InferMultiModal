@@ -1,0 +1,81 @@
+library(dplyr)
+library(readr)
+library(tidyr)
+library(stringr)
+library(xtable)
+library(ggplot2)
+library(here)
+
+all_data <-  read.csv(here::here("simulation","Results","betacsv","betatest_nocommon.csv"))[,-1]
+
+
+plot_noiseB_v <- function(noise_val, B_val, v_vals = 1:3, F_val = NA, out_png = NULL) {
+  sub <- all_data %>% filter(noise == noise_val, B == B_val)%>%
+    filter(w <= 0.36)
+
+
+  if (is.na(F_val)) {
+    F_val <- unique(sub$F)[1]
+  }
+
+  df <- sub %>% filter(F == F_val, V %in% v_vals)
+
+
+  df_sum <- df %>%
+    group_by(V, method, k, w) %>%
+    summarise(pval = mean(pval, na.rm = TRUE), .groups = "drop")
+
+  v_labeller <- function(value) {
+    paste0("V", value)
+  }
+
+  p <- ggplot(df_sum, aes(x = w, y = pval,
+                          color = method,
+                          shape = factor(k),
+                          linetype = factor(k),
+                          group = interaction(method, k))) +
+    geom_line(size=0.6, na.rm = TRUE) +
+    geom_point(size=2, na.rm = TRUE) +
+    facet_wrap(~ V, nrow = 1, labeller = as_labeller(v_labeller)) +
+    labs(
+      x = expression(w),
+      y = "Empirical rejection rate",
+      shape = "Modality",
+      linetype = "Modality",
+      color = "Method"
+    ) +
+    theme_bw(base_size = 14) +
+    theme(
+      strip.background = element_rect(fill = "grey90"),
+      panel.grid.minor = element_blank(),
+      plot.title = element_blank(),
+      legend.key.size = unit(0.6, "lines"),
+      legend.text = element_text(size=10),
+      legend.title = element_text(size=11),
+      legend.spacing.x = unit(0.2, "cm"),
+      legend.spacing.y = unit(0.1, "cm")
+    )
+
+
+
+  if(!is.null(out_png)){
+    ggsave(out_png, p, width = 16, height = 5, dpi = 300)
+  }
+
+  return(p)
+}
+
+ii=0
+ for(noise in 1){
+
+   for(B in 1){
+     ii=ii+1
+     dd=plot_noiseB_v(noise_val=noise, B_val=B, v_vals = 1:3, F_val = NA, out_png = paste0('FigS7.png'))
+     print(dd)
+   }
+ }
+
+
+
+
+

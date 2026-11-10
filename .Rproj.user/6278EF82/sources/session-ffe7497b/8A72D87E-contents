@@ -1,0 +1,137 @@
+library(zoo)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(here)
+df <- read.csv(here::here("simulation","Results","estimationcsv","estimation_main.csv"))[,-1]
+
+df_long <- df %>%
+  pivot_longer(cols = c(Proposed,IFRM,MCP,FARM),
+               names_to = "Method",
+               values_to = "Value") %>%
+  filter(!is.na(Value)) %>%
+  filter(!V %in% c(4,5))
+df_long <- df_long %>%
+  mutate(setting_label = paste0("F", F, "_V", V, "_noise", noise, "_B", B))
+
+p_values <- unique(df_long$p)
+v_labels <- c("1" = "V1", "2" = "V2", "3" = "V3")
+label_value<- c("1" = "Gaussian noise", "2" = "Uniform noise")
+
+
+target_grid <- seq(from = 0.2, to = 0.7, by = 0.0125)
+
+df_interpolated <- df_long %>%
+  mutate(xval = round(xval, 3)) %>%
+  group_by(p, F, V, noise, B, Method, xval) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  group_by(p, F, V, noise, B, Method) %>%
+  complete(xval = target_grid) %>%
+  mutate(Value = zoo::na.approx(Value, xval, na.rm = FALSE)) %>%
+  ungroup() %>%
+  filter(!is.na(Value))
+
+df_long <- df_interpolated
+
+
+p_values <- unique(df_long$p)
+
+
+
+my_shapes <- c(21, 22, 24, 25, 23, 21, 22)
+
+
+
+
+for (p_val in 1200) {
+  df_p <- df_long %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(noise)
+
+  for (i in 1:nrow(nb_combos)) {
+    noise_val <- nb_combos$noise[i]
+    df_sub <- df_p %>% filter(noise == noise_val)
+
+    df_sub <- df_sub %>%
+      group_by(B, V) %>%
+      mutate(
+        min_val = min(Value, na.rm = TRUE),
+        max_val = max(Value, na.rm = TRUE),
+        ymin_BV = ifelse(is.finite(min_val), 0.8 * min_val, NA_real_),
+        ymax_BV = ifelse(is.finite(max_val), .4 * max_val, NA_real_)
+      ) %>%
+      ungroup() %>%
+      dplyr::select(-min_val, -max_val)
+
+    p_plot <- ggplot(df_sub, aes(x = xval, y = Value, color = Method, group = Method, shape = Method)) +
+
+      geom_point(size = 3.5, alpha = 0.8) +
+
+      geom_smooth(
+        data = subset(df_sub, Method == "Proposed"),
+        method = "gam",
+        formula = y ~ s(x, k = 2),
+        se = FALSE,
+        size = 1.2
+      ) +
+      geom_smooth(
+        data = subset(df_sub, Method != "Proposed"),
+        method = "loess",
+        span = 0.5,
+        se = FALSE,
+        size = 1.2
+      ) +
+
+    geom_blank(aes(y = ymin_BV)) +
+      geom_blank(aes(y = ymax_BV)) +
+    scale_shape_manual(values = c(15, 16, 17, 18, 8, 4, 3)) +
+
+      facet_grid(
+        B ~ V,
+        scales = "free_y",
+        labeller = labeller(V = v_labels, B = label_value)
+      ) +
+
+      labs(y = "Average L2 error", color = "Method", shape = "Method") +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 5)),
+        shape = guide_legend(override.aes = list(size = 5))
+      ) +
+
+      xlab(expression(2 * sqrt(s * log(p) / n))) +
+      xlim(0.25, 0.6)
+
+    if(noise_val==1){
+      ggsave(
+      filename = paste0(
+        "Fig1.png"
+      ),
+      plot = p_plot,
+      width = 16,
+      height = 9
+    )
+    }else{
+      ggsave(
+        filename = paste0(
+          "FigS1.png"
+        ),
+        plot = p_plot,
+        width = 16,
+        height = 9
+      )
+    }
+  }
+}
+
+

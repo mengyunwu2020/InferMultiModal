@@ -1,0 +1,219 @@
+library(dplyr)
+library(tidyr)
+library(readr)
+library(ggplot2)
+library(zoo)
+library(here)
+##----Table S4----
+
+df_result <- read.csv(here::here("simulation", "Results", "betacsv","betatest_overall_lowernoise.csv"))[, -1]
+
+w_cols <- c("w=0", "w=0.05", "w=0.1", "w=0.15", "w=0.2", "w=0.25", "w=0.3", "w=0.35")
+target_methods <- c("Proposed", "FARM", "Joint")
+
+df_wide <- df_result %>%
+  mutate(
+    s = ifelse(grepl("^w=", as.character(s)), as.character(s), paste0("w=", s)),
+    method = case_when(
+      tolower(method) == "proposed" ~ "Proposed",
+      toupper(method) == "FARM"     ~ "FARM",
+      tolower(method) == "joint"    ~ "Joint",
+      TRUE                          ~ as.character(method)
+    ),
+    method = factor(method, levels = target_methods),
+    V = ifelse(grepl("^V", as.character(V)), as.character(V), paste0("V", V))
+  ) %>%
+  filter(s %in% w_cols, method %in% target_methods) %>%
+  group_by(V, method, s) %>%
+  summarise(pval = mean(pval, na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(
+    id_cols = c(V, method),
+    names_from = s,
+    values_from = pval
+  ) %>%
+  arrange(V, method)
+
+print_standard_table <- function(data) {
+  cat("\\begin{table}[H]\n")
+  cat("\\centering\n")
+  cat("\\small\n")
+  cat("\\renewcommand\\tabcolsep{2.5pt}\n")
+  cat("\\caption{Empirical rejection rates (size and power) of the proposed and alternative tests under scenarios with a higher signal-to-noise ratio.}\n")
+  cat("\\label{tab:beta_1200}\n")
+  cat("\\begingroup\n")
+  cat("\\renewcommand{\\arraystretch}{0.65}\n")
+  cat("\\begin{tabular}{llcccccccc}\n")
+  cat("\\toprule\n")
+  cat("$\\boldsymbol{\\Sigma}_{\\boldsymbol{v}}$ & Method & $w=0$ & $w=0.05$ & $w=0.1$ & $w=0.15$ & $w=0.2$ & $w=0.25$ & $w=0.3$ & $w=0.35$ \\\\\n")
+  cat("\\midrule\n")
+
+  v_list <- c("V1", "V2", "V3")
+
+  for (v_name in v_list) {
+    sub_v <- data %>% filter(V == v_name)
+    if (nrow(sub_v) == 0) next
+
+    for (m_idx in seq_along(target_methods)) {
+      m_name <- target_methods[m_idx]
+      row_data <- sub_v %>% filter(method == m_name)
+      if (nrow(row_data) == 0) next
+
+      vals <- sapply(row_data[w_cols], function(x) sprintf("%.3f", as.numeric(x)))
+      vals_str <- paste(vals, collapse = " & ")
+
+      if (m_idx == 1) {
+        cat(sprintf("\\multirow{3}{*}{%s} & %-8s & %s \\\\\n", v_name, m_name, vals_str))
+      } else {
+        cat(sprintf("                    & %-8s & %s \\\\\n", m_name, vals_str))
+      }
+    }
+  }
+
+  cat("\\bottomrule\n")
+  cat("\\end{tabular}\n")
+  cat("\\endgroup\n")
+  cat("\\end{table}\n")
+}
+
+print_standard_table(df_wide)
+##--Figure S24----
+
+
+plot_noise_allB_from_table <- function(noise_val, B_vals = NULL, v_vals = 1:3, method_vals = NULL, out_png = NULL, all_data_df) {
+  if ("w" %in% names(all_data_df) && !"v" %in% names(all_data_df)) {
+    all_data_df <- all_data_df %>% rename(v = w)
+  }
+
+  sub <- all_data_df %>% filter(noise == noise_val)
+  if (!is.null(B_vals)) {
+    sub <- sub %>% filter(B %in% B_vals)
+  } else {
+    B_vals <- sort(unique(sub$B))
+  }
+
+  if (!is.null(method_vals)) {
+    sub <- sub %>% filter(method %in% method_vals)
+  }
+
+  df <- sub %>% filter(V %in% v_vals)
+  if (nrow(df) == 0) return(NULL)
+
+  all_v <- sort(unique(df$v))
+
+  df_sum <- df %>%
+    mutate(pval = as.numeric(pval), v = as.numeric(v)) %>%
+    group_by(B, V, method, k, v) %>%
+    summarise(pval = mean(pval, na.rm = TRUE), .groups = "drop") %>%
+    group_by(B, V, method, k) %>%
+    complete(v = all_v) %>%
+    ungroup() %>%
+    mutate(
+      pval = ifelse(
+        tolower(method) == "ifrm" & (is.na(pval) | is.nan(pval)),
+        1,
+        pval
+      )
+    ) %>%
+    filter(!is.na(pval) & !is.nan(pval)) %>%
+    arrange(B, V, method, k, v) %>%
+    group_by(B, V, method, k) %>%
+    mutate(pval = cummax(pval)) %>%
+    ungroup()
+
+  v_labeller <- function(value) paste0("V", value)
+
+  method_labels <- c(
+    "proposed" = "Proposed",
+    "Proposed" = "Proposed",
+    "jointadjust_lambin" = "joint_lambin",
+    "jointadjust" = "Joint",
+    "Joint" = "Joint",
+    "joint" = "Joint",
+    "IFRM" = "IFRM",
+    "ifrm" = "IFRM"
+  )
+
+  modality_labels <- c(
+    "1" = "1", "2" = "2", "3" = "3", "4" = "4",
+    "kk1" = "1", "kk2" = "2", "kk3" = "3", "kk4" = "4",
+    "common" = "common"
+  )
+
+  p <- ggplot(df_sum, aes(x = v, y = pval,
+                          color = method,
+                          shape = factor(k),
+                          linetype = factor(k),
+                          group = interaction(method, k))) +
+    geom_line(linewidth = 0.8, na.rm = TRUE) +
+    geom_point(size = 4, na.rm = TRUE) +
+    facet_grid(B ~ V, labeller = labeller(V = as_labeller(v_labeller))) +
+    scale_x_continuous(
+      breaks = seq(
+        min(df_sum$v),
+        max(df_sum$v),
+        by = 0.1
+      )
+    ) +
+    labs(
+      x = "Signal",
+      y = "Empirical rejection rate",
+      shape = "Modality",
+      linetype = "Modality",
+      color = "Method"
+    ) +
+    theme_bw() +
+    theme(
+      strip.text = element_blank(),
+      axis.text = element_text(size = 16),
+      axis.title = element_text(size = 16),
+      legend.key.size = unit(1.2, "lines"),
+      legend.key.width = unit(3, "lines"),
+      legend.text = element_text(size = 16),
+      legend.title = element_text(size = 16, face = "bold"),
+      legend.position = "bottom",
+      legend.spacing.x = unit(0.3, "cm"),
+      legend.spacing.y = unit(0.1, "cm"),
+      panel.grid.minor = element_blank(),
+      legend.box.background = element_blank()
+    ) +
+    scale_color_discrete(labels = function(x) {
+      mapped <- method_labels[x]
+      mapped[is.na(mapped)] <- x[is.na(mapped)]
+      parse(text = mapped)
+    }) +
+    scale_shape_discrete(labels = modality_labels) +
+    scale_linetype_discrete(labels = modality_labels) +
+    guides(
+      shape = guide_legend(override.aes = list(size = 4, linewidth = 0.8)),
+      color = guide_legend(override.aes = list(size = 4, linewidth = 0.8))
+    )
+
+  if(!is.null(out_png)){
+    ggsave(out_png, p, width = 16, height = 9, dpi = 300)
+  }
+
+  return(p)
+}
+
+df_clean <- read_csv(here::here("simulation", "Results", "betacsv","betatest_lowernoise.csv"), show_col_types = FALSE)[, -1]
+
+if ("w" %in% names(df_clean)) {
+  df_sub2 <- df_clean %>% filter(round(as.numeric(w), 2) != 0.4)
+} else if ("v" %in% names(df_clean)) {
+  df_sub2 <- df_clean %>% filter(round(as.numeric(v), 2) != 0.4)
+} else {
+  df_sub2 <- df_clean
+}
+
+selected_methods <- c("Proposed", "Joint", "IFRM")
+
+for(ii in 1) {
+  dd <- plot_noise_allB_from_table(
+    noise_val = ii,
+    B_vals = c(1, 2),
+    method_vals = selected_methods,
+    out_png =here::here("simulation", "Results", "betacsv","FigS24.png"),
+    all_data_df = df_sub2
+  )
+  print(dd)
+}

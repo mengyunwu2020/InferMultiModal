@@ -1,0 +1,385 @@
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(zoo)
+library(mgcv)
+
+#-------estimation nocommon Fig-S5------
+library(here)
+df=read.csv(here::here("simulation","Results","estimationcsv","estimation_nocommon.csv"))[,-1]
+
+df_long <- df %>%
+  pivot_longer(cols = c(Proposed, IFRM, MCP, FARM),
+               names_to = "Method", values_to = "Value") %>%
+  filter(!is.na(Value)) %>%
+  filter(!(V %in% c(4, 5))) %>%
+  filter(xval >= 0.2, xval <= 0.7) %>%
+  filter(B == 1) %>%
+  filter(noise == 1)
+
+target_grid <- seq(from = 0.2, to = 0.7, by = 0.0125)
+df_long <- df_long %>%
+  mutate(xval = round(xval, 3)) %>%
+  group_by(p, F, V, noise, B, Method, xval) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  group_by(p, F, V, noise, B, Method) %>%
+  complete(xval = target_grid) %>%
+  mutate(Value = zoo::na.approx(Value, xval, na.rm = FALSE)) %>%
+  ungroup() %>%
+  filter(!is.na(Value))
+
+p_values <- unique(df_long$p)
+v_labels <- c("1" = "V1", "2" = "V2", "3" = "V3")
+label_value <- c("1" = "Gaussian noise", "2" = "Uniform noise")
+my_shapes <- c(15, 16, 17, 18, 8, 4, 3)
+
+for (p_val in p_values) {
+  df_p <- df_long %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(noise)
+
+  for (i in 1:nrow(nb_combos)) {
+    noise_val <- nb_combos$noise[i]
+    df_sub <- df_p %>% filter(noise == noise_val)
+
+    current_span <- 0.5
+
+    df_prop <- df_sub %>% filter(Method == "Proposed")
+    if(nrow(df_prop) > 3) {
+      m_gam <- mgcv::gam(Value ~ s(xval, k = 2), data = df_prop)
+      df_prop$pred_value <- predict(m_gam, newdata = df_prop)
+    } else { df_prop$pred_value <- df_prop$Value }
+
+    df_others <- df_sub %>% filter(Method != "Proposed")
+    if(nrow(df_others) > 0) {
+      df_others <- df_others %>% group_by(Method) %>% group_modify(~ {
+        if(nrow(.x) > 3) {
+          m_loess <- loess(Value ~ xval, data = .x, span = current_span)
+          .x$pred_value <- predict(m_loess, newdata = .x)
+        } else { .x$pred_value <- .x$Value }
+        return(.x)
+      }) %>% ungroup()
+    }
+    df_plot <- bind_rows(df_prop, df_others)
+
+    p_plot <- ggplot(df_plot, aes(x = xval, color = Method, group = Method)) +
+      geom_line(aes(y = pred_value, linetype = Method), size = 2) +
+      geom_point(aes(y = pred_value, shape = Method), size = 3.5, alpha = 0.8) +
+
+      scale_shape_manual(values = my_shapes) +
+      facet_grid(B ~ V, scales = "free_y", labeller = labeller(V = v_labels, B = label_value)) +
+
+      labs(y = "Average L2 error", color = "Method", shape = "Method", linetype = "Method") +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 5)),
+        shape = guide_legend(override.aes = list(size = 5)),
+        linetype = guide_legend(keywidth = 3)
+      ) +
+      xlab(expression(2*sqrt(s*log(p)/n))) +
+      xlim(0.25, 0.6)+
+
+      coord_cartesian(ylim = c(0.05,.8))
+
+    ggsave(filename = here::here("simulation", "Results", "estimationcsv","FigS5.png"), plot = p_plot, width = 16, height = 5)
+  }
+}
+
+
+#----predict nocommon Fig-S6--------
+df <- read.csv(here::here("simulation","Results","estimationcsv","prediction_nocommon.csv"))[,-1]
+df_long <- df %>%
+  pivot_longer(cols = c(Proposed, MCP, FARM, IFRM),
+               names_to = "Method",
+               values_to = "Value") %>%
+  filter(!is.na(Value)) %>%
+  filter(!(V %in% c(4, 5))) %>%
+  filter(xval >= 0.2, xval <= 0.7) %>%
+  filter(B == 1) %>%
+  filter(noise == 1) %>%
+  mutate(setting_label = paste0("F", F, "_V", V, "_noise", noise, "_B", B))
+
+target_grid <- seq(from = 0.2, to = 0.7, by = 0.0125)
+
+df_long <- df_long %>%
+  mutate(xval = round(xval, 3)) %>%
+  group_by(p, F, V, noise, B, Method, xval) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  group_by(p, F, V, noise, B, Method) %>%
+  complete(xval = target_grid) %>%
+  mutate(Value = zoo::na.approx(Value, xval, na.rm = FALSE)) %>%
+  ungroup() %>%
+  filter(!is.na(Value))
+
+p_values <- unique(df_long$p)
+v_labels <- c("1" = "V1", "2" = "V2", "3" = "V3")
+label_value <- c("1" = "Gaussian noise", "2" = "Uniform noise")
+my_shapes <- c(15, 16, 17, 18, 8, 4, 3)
+
+for (p_val in p_values) {
+  df_p <- df_long %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(B)
+
+  for (i in 1:nrow(nb_combos)) {
+    b_val <- nb_combos$B[i]
+    df_sub <- df_p %>% filter(B == b_val)
+    current_span <- 0.6
+
+    df_prop <- df_sub %>% filter(Method == "Proposed")
+    if(nrow(df_prop) > 3) {
+      m_gam <- mgcv::gam(Value ~ s(xval, k = 2), data = df_prop)
+      df_prop$pred_value <- predict(m_gam, newdata = df_prop)
+    } else { df_prop$pred_value <- df_prop$Value }
+
+    df_others <- df_sub %>% filter(Method != "Proposed")
+    if(nrow(df_others) > 0) {
+      df_others <- df_others %>% group_by(Method) %>% group_modify(~ {
+        if(nrow(.x) > 3) {
+          m_loess <- loess(Value ~ xval, data = .x, span = current_span)
+          .x$pred_value <- predict(m_loess, newdata = .x)
+        } else { .x$pred_value <- .x$Value }
+        return(.x)
+      }) %>% ungroup()
+    }
+    df_plot <- bind_rows(df_prop, df_others)
+
+    p_plot <- ggplot(df_plot, aes(x = xval, color = Method, group = Method)) +
+      geom_line(aes(y = pred_value, linetype = Method), size = 1.5) +
+      geom_point(aes(y = pred_value, shape = Method), size = 3.5, alpha = 0.8) +
+
+      scale_shape_manual(values = my_shapes) +
+      facet_grid(noise ~ V, scales = "free_y", labeller = labeller(V = v_labels, noise = label_value)) +
+
+      labs(y = "Prediction error", color = "Method", shape = "Method", linetype = "Method") +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 5)),
+        shape = guide_legend(override.aes = list(size = 5)),
+        linetype = guide_legend(keywidth = 3)
+      ) +
+      xlab(expression(2*sqrt(s*log(p)/n))) +
+      xlim(0.25, 0.6)+
+
+      coord_cartesian(ylim = c(1, 1.75))
+
+    ggsave(filename =here::here("simulation", "Results", "estimationcsv","FigS6.png"), plot = p_plot, width = 16, height = 5)
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#---estimation onlycommon Fig-S8-----
+df <- read.csv(here::here("simulation","Results","estimationcsv","estimation_onlycommon.csv"))[,-1]
+
+
+df_long <- df %>%
+  pivot_longer(cols = c(Proposed, IFRM, MCP, FARM),
+               names_to = "Method", values_to = "Value") %>%
+  filter(!is.na(Value)) %>%
+  filter(!(V %in% c(4, 5))) %>%
+  filter(xval >= 0.2, xval <= 0.7) %>%
+  filter(B == 1) %>%
+  filter(noise == 1)
+
+target_grid <- seq(from = 0.2, to = 0.7, by = 0.0125)
+df_long <- df_long %>%
+  mutate(xval = round(xval, 3)) %>%
+  group_by(p, F, V, noise, B, Method, xval) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  group_by(p, F, V, noise, B, Method) %>%
+  complete(xval = target_grid) %>%
+  mutate(Value = zoo::na.approx(Value, xval, na.rm = FALSE)) %>%
+  ungroup() %>%
+  filter(!is.na(Value))
+
+p_values <- unique(df_long$p)
+v_labels <- c("1" = "V1", "2" = "V2", "3" = "V3")
+label_value <- c("1" = "Gaussian noise", "2" = "Uniform noise")
+my_shapes <- c(15, 16, 17, 18, 8, 4, 3)
+
+for (p_val in p_values) {
+  df_p <- df_long %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(noise)
+
+  for (i in 1:nrow(nb_combos)) {
+    noise_val <- nb_combos$noise[i]
+    df_sub <- df_p %>% filter(noise == noise_val)
+
+    current_span <- 0.5
+    df_prop <- df_sub %>% filter(Method == "Proposed")
+    if(nrow(df_prop) > 3) {
+      m_gam <- mgcv::gam(Value ~ s(xval, k = 2), data = df_prop)
+      df_prop$pred_value <- predict(m_gam, newdata = df_prop)
+    } else { df_prop$pred_value <- df_prop$Value }
+
+    df_others <- df_sub %>% filter(Method != "Proposed")
+    if(nrow(df_others) > 0) {
+      df_others <- df_others %>% group_by(Method) %>% group_modify(~ {
+        if(nrow(.x) > 3) {
+          m_loess <- loess(Value ~ xval, data = .x, span = current_span)
+          .x$pred_value <- predict(m_loess, newdata = .x)
+        } else { .x$pred_value <- .x$Value }
+        return(.x)
+      }) %>% ungroup()
+    }
+    df_plot <- bind_rows(df_prop, df_others)
+
+    p_plot <- ggplot(df_plot, aes(x = xval, color = Method, group = Method)) +
+      geom_line(aes(y = pred_value, linetype = Method), size = 2) +
+      geom_point(aes(y = pred_value, shape = Method), size = 3.5, alpha = 0.8) +
+
+      scale_shape_manual(values = my_shapes) +
+      facet_grid(B ~ V, scales = "free_y", labeller = labeller(V = v_labels, B = label_value)) +
+
+      labs(y = "Average L2 error", color = "Method", shape = "Method", linetype = "Method") +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 5)),
+        shape = guide_legend(override.aes = list(size = 5)),
+        linetype = guide_legend(keywidth = 3)
+      ) +
+      xlab(expression(2*sqrt(s*log(p)/n))) +
+      xlim(0.25, 0.6)+
+
+      coord_cartesian(ylim = c(0.05,.45))
+
+    ggsave(filename = here::here("simulation", "Results", "estimationcsv","FigS8.png"), plot = p_plot, width = 16, height = 5)
+  }
+}
+
+#--predict onlycommon Fig-S9-------
+df <- read.csv(here::here("simulation","Results","estimationcsv","prediction_onlycommon.csv"))[,-1]
+df_long <- df %>%
+  pivot_longer(cols = c(Proposed, MCP, FARM, IFRM),
+               names_to = "Method", values_to = "Value") %>%
+  filter(!is.na(Value)) %>%
+  filter(!(V %in% c(4, 5))) %>%
+  filter(xval >= 0.2, xval <= 0.7) %>%
+  filter(B == 1) %>%
+  filter(noise == 1)
+
+target_grid <- seq(from = 0.2, to = 0.7, by = 0.0125)
+df_long <- df_long %>%
+  mutate(xval = round(xval, 3)) %>%
+  group_by(p, F, V, noise, B, Method, xval) %>%
+  summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  group_by(p, F, V, noise, B, Method) %>%
+  complete(xval = target_grid) %>%
+  mutate(Value = zoo::na.approx(Value, xval, na.rm = FALSE)) %>%
+  ungroup() %>%
+  filter(!is.na(Value))
+
+p_values <- unique(df_long$p)
+v_labels <- c("1" = "V1", "2" = "V2", "3" = "V3")
+label_value <- c("1" = "Gaussian noise", "2" = "Uniform noise")
+my_shapes <- c(15, 16, 17, 18, 8, 4, 3)
+
+for (p_val in p_values) {
+  df_p <- df_long %>% filter(p == p_val)
+  nb_combos <- df_p %>% distinct(B)
+
+  for (i in 1:nrow(nb_combos)) {
+    current_span <- 0.6
+
+    b_val <- nb_combos$B[i]
+    df_sub <- df_p %>% filter(B == b_val)
+
+    df_prop <- df_sub %>% filter(Method == "Proposed")
+    if(nrow(df_prop) > 3) {
+      m_gam <- mgcv::gam(Value ~ s(xval, k = 2), data = df_prop)
+      df_prop$pred_value <- predict(m_gam, newdata = df_prop)
+    } else { df_prop$pred_value <- df_prop$Value }
+
+    df_others <- df_sub %>% filter(Method != "Proposed")
+    if(nrow(df_others) > 0) {
+      df_others <- df_others %>% group_by(Method) %>% group_modify(~ {
+        if(nrow(.x) > 3) {
+          m_loess <- loess(Value ~ xval, data = .x, span = current_span)
+          .x$pred_value <- predict(m_loess, newdata = .x)
+        } else { .x$pred_value <- .x$Value }
+        return(.x)
+      }) %>% ungroup()
+    }
+    df_plot <- bind_rows(df_prop, df_others)
+
+    p_plot <- ggplot(df_plot, aes(x = xval, color = Method, group = Method)) +
+      geom_line(aes(y = pred_value, linetype = Method), size = 1.5) +
+      geom_point(aes(y = pred_value, shape = Method), size = 3.5, alpha = 0.8) +
+
+      scale_shape_manual(values = my_shapes) +
+      facet_grid(noise ~ V, scales = "free_y", labeller = labeller(V = v_labels, noise = label_value)) +
+
+      labs(y = "Prediction error", color = "Method", shape = "Method", linetype = "Method") +
+      theme_bw() +
+      theme(
+        legend.position = "bottom",
+        legend.text = element_text(size = 16),
+        legend.title = element_text(size = 16),
+        strip.text = element_text(size = 16),
+        axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        strip.text.y = element_blank(),
+        strip.background.y = element_blank(),
+        axis.title.x = element_text(margin = margin(t = 10))
+      ) +
+      guides(
+        color = guide_legend(override.aes = list(size = 5)),
+        shape = guide_legend(override.aes = list(size = 5)),
+        linetype = guide_legend(keywidth = 3)
+      ) +
+      xlab(expression(2*sqrt(s*log(p)/n))) +
+      xlim(0.25, 0.6)+
+
+      coord_cartesian(ylim = c(1, 1.25))
+
+    ggsave(filename =here::here("simulation","Results","estimationcsv","FigS9.png"), plot = p_plot, width = 16, height = 5)
+  }
+}
+

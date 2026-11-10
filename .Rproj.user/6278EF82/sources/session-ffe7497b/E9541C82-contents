@@ -1,0 +1,74 @@
+\begin{table}[htbp]
+\centering
+\caption{Data analysis: top five significantly enriched GO terms for the identified modality-shared factor and each modality-specific factor and their adjusted $p$-values (p.adjust).}
+ \label{tab:GO} 
+\renewcommand\tabcolsep{1pt}
+\scriptsize
+\begingroup
+\renewcommand{\arraystretch}{.56}   
+\begin{tabular}{p{2.2cm}p{2cm}p{9.5cm}p{2cm}}  
+\toprule
+\textbf{Factor} & \textbf{GO term} & \textbf{Description} & \textbf{p.adjust} \\
+\midrule 
+\multirow{5}{*}{\shortstack[l]{Modality-shared\\factor }} & GO:0038129 & ERBB3 signaling pathway & $1.58\times10^{-4}$ \\
+ & GO:0048009 & Insulin-like growth factor receptor signaling pathway & $1.58\times10^{-4}$ \\
+ & GO:0014044 & Schwann cell development & $9.39\times10^{-4}$ \\
+ & GO:0014037 & Schwann cell differentiation & $1.19\times10^{-3}$ \\
+ & GO:0048538 & Thymus development & $1.19\times10^{-3}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{mRNA-specific\\factor 1}} & GO:0031929 & TOR signaling & $2.37\times10^{-2}$ \\
+ & GO:0045859 & Regulation of protein kinase activity & $2.37\times10^{-2}$ \\
+ & GO:0006260 & DNA replication & $2.37\times10^{-2}$ \\
+ & GO:0043549 & Regulation of kinase activity & $2.37\times10^{-2}$ \\
+ & GO:0032006 & Regulation of TOR signaling & $2.64\times10^{-2}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{mRNA-specific\\factor 2}} & GO:0030295 & Protein kinase activator activity & $8.01\times10^{-3}$ \\
+ & GO:0019209 & Kinase activator activity & $8.01\times10^{-3}$ \\
+ & GO:0044389 & Ubiquitin-like protein ligase binding & $1.26\times10^{-2}$ \\
+ & GO:0043539 & Protein serine/threonine kinase activator activity & $2.29\times10^{-2}$ \\
+ & GO:0031625 & Ubiquitin protein ligase binding & $3.09\times10^{-2}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{CNA-specific\\factor 1}} & GO:0004674 & Protein serine/threonine kinase activity & $1.01\times10^{-7}$ \\
+ & GO:0106310 & Protein serine kinase activity & $1.01\times10^{-7}$ \\
+ & GO:0018105 & Peptidyl-serine phosphorylation & $3.47\times10^{-7}$ \\
+ & GO:0018209 & Peptidyl-serine modification & $3.79\times10^{-7}$ \\
+ & GO:0048732 & Gland development & $1.09\times10^{-5}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{CNA-specific\\factor 2}} & GO:0097191 & Extrinsic apoptotic signaling pathway & $1.63\times10^{-5}$ \\
+ & GO:0097192 & Extrinsic apoptotic signaling pathway in absence of ligand & $1.63\times10^{-5}$ \\
+ & GO:0051402 & Neuron apoptotic process & $1.63\times10^{-5}$ \\
+ & GO:0048732 & Gland development & $1.63\times10^{-5}$ \\
+ & GO:0038034 & Signal transduction in absence of ligand & $1.63\times10^{-5}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{CNA-specific\\factor 3}} & GO:0043434 & Response to peptide hormone & $1.52\times10^{-4}$ \\
+ & GO:0032868 & Response to insulin & $2.26\times10^{-4}$ \\
+ & GO:0032956 & Regulation of actin cytoskeleton organization & $2.26\times10^{-4}$ \\
+ & GO:0110020 & Regulation of actomyosin structure organization & $2.26\times10^{-4}$ \\
+ & GO:0030038 & Contractile actin filament bundle assembly & $2.26\times10^{-4}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{CNA-specific\\factor 4}} & GO:0097136 & Bcl-2 family protein complex & $1.50\times10^{-5}$ \\
+ & GO:0010332 & Response to gamma radiation & $2.71\times10^{-4}$ \\
+ & GO:2001234 & Negative regulation of apoptotic signaling pathway & $8.06\times10^{-4}$ \\
+ & GO:2000811 & Negative regulation of anoikis & $8.06\times10^{-4}$ \\
+ & GO:1904019 & Epithelial cell apoptotic process & $8.06\times10^{-4}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{CNA-specific\\factor 7}} & GO:0019207 & Kinase regulator activity & $1.44\times10^{-3}$ \\
+ & GO:0043549 & Regulation of kinase activity & $1.80\times10^{-3}$ \\
+ & GO:0000079 & Regulation of cyclin-dependent protein serine/threonine kinase activity & $1.80\times10^{-3}$ \\
+ & GO:0038128 & ERBB2 signaling pathway & $1.80\times10^{-3}$ \\
+ & GO:1904029 & Regulation of cyclin-dependent protein kinase activity & $1.80\times10^{-3}$ \\
+\midrule
+\multirow{5}{*}{\shortstack[l]{CNA-specific\\factor 8}} & GO:0051347 & Positive regulation of transferase activity & $1.03\times10^{-4}$ \\
+ & GO:0038128 & ERBB2 signaling pathway & $1.03\times10^{-4}$ \\
+ & GO:0033674 & Positive regulation of kinase activity & $1.03\times10^{-4}$ \\
+ & GO:0038129 & ERBB3 signaling pathway & $1.03\times10^{-4}$ \\
+ & GO:0030295 & Protein kinase activator activity & $2.14\times10^{-4}$ \\
+\midrule
+\multirow{4}{*}{\shortstack[l]{CNA-specific\\factor 9}} & GO:0031489 & Myosin V binding & $8.29\times10^{-3}$ \\
+ & GO:0010631 & Epithelial cell migration & $1.57\times10^{-2}$ \\
+ & GO:0090132 & Epithelium migration & $1.57\times10^{-2}$ \\
+ & GO:0090130 & Tissue migration & $1.57\times10^{-2}$ \\
+\bottomrule
+\end{tabular}
+\endgroup
+\end{table}
