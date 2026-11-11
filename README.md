@@ -1,0 +1,334 @@
+# Code and Data for "Structured Factor Regression with High-Dimensional Multimodal Data"
+
+## Overview
+This repository contains the R code and data required to reproduce the simulation studies and real data analysis presented in the paper *Structured Factor Regression with High-Dimensional Multimodal Data*.
+
+It includes the implementation of the proposed method, alternative methods for comparison, simulation and real data analysis scripts, as well as the corresponding datasets and precomputed results.
+
+## Repository Structure 
+
+The repository is organized as follows:
+
+```text
+code_and_data/
+├── InferMultiModal/                      # R package implementing the proposed method
+│   ├── R/
+│   │   ├── betatest.R
+│   │   ├── estimation.R
+│   │   ├── gammatest.R
+│   │   ├── predict.estimation.R
+│   │   └── rcv.R
+│   ├── man/                               # Package help documentation
+│   ├── DESCRIPTION
+│   ├── NAMESPACE
+│   └── InferMultiModal.Rproj
+│
+├── InferMultiModal.pdf                   # Package help manual
+│
+├── alternative/                          # Implementations of alternative methods
+│   ├── beta_fan.R
+│   ├── beta_li.R
+│   └── joint_func.R
+│
+├── Data/                                 # Data used in the real-data analysis
+│   └── RealData/
+│       ├── RawData/ # Raw data (available on GitHub or cBioPortal; excluded from the submission package)
+│       │   ├── luad_tcga/
+│       │   └── lusc_tcga/
+│       └── ProcessedData/                # Processed real-data dataset
+│           ├── lung_data.RData
+│           └── processed_procedure.R
+│
+├── simulation/                           # Simulation studies
+│   ├── Replication_code/                 # Scripts for simulation experiments
+│   │   ├── MainSetting/
+│   │   │   ├── MainSetting_estimation.R
+│   │   │   ├── MainSetting_betatest.R
+│   │   │   ├── MainSetting_gammatest.R
+│   │   │   └── R_sensitivity/
+│   │   │       ├── R_sensitivity_estimation.R
+│   │   │       ├── R_sensitivity_betatest.R
+│   │   │       └── R_sensitivity_gammatest.R
+│   │   ├── WeakSetting/
+│   │   │   ├── WeakSetting_estimation.R
+│   │   │   ├── WeakSetting_betatest.R
+│   │   │   └── WeakSetting_gammatest.R
+│   │   ├── OnlyCommon/
+│   │   │   ├── onlycommon_estimation.R
+│   │   │   └── onlycommon_betatest.R
+│   │   ├── NoCommon/
+│   │   │   ├── nocommon_estimation.R
+│   │   │   └── nocommon_betatest.R
+│   │   └── LowerNoiseSetting/
+│   │       ├── LowerNoiseSetting_estimation.R
+│   │       ├── LowerNoiseSetting_betatest.R
+│   │       └── LowerNoiseSetting_gammatest.R
+│   │
+│   ├── Results/                          # Precomputed simulation results
+│   │   ├── betacsv/                      # Residual-effect testing results
+│   │   ├── estimationcsv/                # Estimation and prediction results
+│   │   └── gammacsv/                     # Factor-effect testing results
+│   │
+│   └── Fig_Tab_Code/                     # Scripts for generating figures and tables
+│       ├── Tab1.R
+│       ├── TabS1.R
+│       ├── TabS2.R
+│       ├── TabS3.R
+│       ├── TabS4.R
+│       ├── TabS5.R
+│       ├── Fig1 and FigS1.R
+│       ├── Fig2 and FigS2.R
+│       ├── Fig3 and FigS3.R
+│       ├── Fig4 and FigS4.R
+│       ├── FigS5-S6,S8-S9.R
+│       ├── FigS7.R
+│       ├── FigS10 and FigS11.R
+│       ├── FigS12, FigS13 and FigS14.R
+│       ├── FigS15, FigS16 and FigS17.R
+│       ├── FigS18 and FigS19.R
+│       ├── FigS20.R
+│       ├── FigS21.R
+│       ├── FigS22 and FigS23.R
+│       ├── FigS24.R
+│       ├── FigS25.R
+│       ├── FigS26.R
+│       ├── FigS27.R
+│       ├── FigS28.R
+│       └── FigS29.R
+│
+├── realdata/                             # Real-data analyses
+│   ├── Full_Sample_Analysis/             # Full-sample estimation and inference
+│   │   ├── Whole_Sample.R
+│   │   ├── Fig5.R
+│   │   ├── TabS6.R
+│   ├── Resampling_Analysis/              # Resampling-based analysis
+│   │   ├── Prediction_Stability.R
+│   │   └── averageError_and_jaccard.R
+│   └── Results/                          # Precomputed real-data results
+│
+├── InferMultiModal_code_and_data.Rproj  # RStudio project file
+└── ReadMe.pdf                           # PDF version of this README
+```
+## 1. R Package: `InferMultiModal`
+
+The `InferMultiModal/` directory contains the R package implementing the proposed method. The main functions include:
+  
+- `estimation()`: Estimates the parameters of the proposed factor regression model.
+- `betatest()`: Tests the effects of idiosyncratic residuals.
+- `gammatest()`: Tests the effects of common and modality-specific factors.
+- `predict.estimation()`: Generates predictions for new observations based on a fitted model.
+
+The procedure first estimates the factor components from the multimodal data. These estimated components are then used in the subsequent model estimation and inference steps. The factor estimation procedure is implemented separately, and its results are supplied to `estimation()` through the `res_fac` argument.
+
+### Installation
+
+The package can be installed:
+  
+```r
+devtools::install(here::here("InferMultiModal"))
+library(InferMultiModal)
+```
+
+For detailed function descriptions, argument specifications, and usage examples, see the package help documentation in `InferMultiModal.pdf`.
+
+## 2. Alternative Methods
+
+The `alternative/` directory contains the implementations of alternative methods used for comparison with the proposed approach.
+
+The main files include:
+  
+- `beta_li.R`: Implementation of the integrative factor regression method proposed by Li and Li (2022).
+- `beta_fan.R`: An adapted implementation of the method proposed by Fan et al. (2024), based on their publicly available code.
+- `joint_func.R`: Functions for joint estimation.
+
+## 3. Simulation Studies
+
+The `simulation/` directory contains the scripts for conducting simulation experiments, the corresponding precomputed results, and the scripts for generating figures and tables reported in the main manuscript and supplementary materials.
+
+### 3.1 Simulation Settings
+
+Five simulation settings are considered:
+  
+- **Main Setting:** The primary simulation scenario.
+- **Weak Setting:** A scenario with weaker factors.
+- **Only-Common-Factor Setting:** A scenario in which only the common factors are present.
+- **No-Common-Factor Setting:** A scenario without the common factors.
+- **Lower-Noise Setting:** A scenario with a lower noise level (higher-signal-to-noise).
+
+The corresponding scripts are organized into separate subdirectories under `simulation/Replication_code/`.
+
+### 3.2 Replication Code
+
+The `simulation/Replication_code/` directory contains the R scripts for conducting simulation experiments under different settings. For each setting, the scripts are organized according to the following tasks:
+  
+- `*_estimation.R`: Performs parameter estimation and prediction.
+- `*_betatest.R`: Conducts hypothesis testing for the effects of idiosyncratic residuals.
+- `*_gammatest.R`: Conducts hypothesis testing for factor effects.
+
+The scripts are organized into the following subdirectories:
+  
+**Main Setting (`MainSetting/`)**
+- `MainSetting_estimation.R`
+- `MainSetting_betatest.R`
+- `MainSetting_gammatest.R`
+
+**Weak Setting (`WeakSetting/`)**
+- `WeakSetting_estimation.R`
+- `WeakSetting_betatest.R`
+- `WeakSetting_gammatest.R`
+
+**Only-Common-Factor Setting (`OnlyCommon/`)**
+- `onlycommon_estimation.R`
+- `onlycommon_betatest.R`
+
+**No-Common-Factor Setting (`NoCommon/`)**
+- `nocommon_estimation.R`
+- `nocommon_betatest.R`
+
+**Lower-Noise Setting (`LowerNoiseSetting/`)**
+- `LowerNoiseSetting_estimation.R`
+- `LowerNoiseSetting_betatest.R`
+- `LowerNoiseSetting_gammatest.R`
+
+### 3.3 Sensitivity Analysis
+
+Sensitivity analyses are conducted under the main simulation setting to investigate the impact of latent dimension misspecification on the performance of the proposed method.
+
+The corresponding scripts are located in `simulation/Replication_code/MainSetting/R_sensitivity/`:
+  
+- `R_sensitivity_estimation.R`: Performs parameter estimation and prediction under different choices of latent dimensions.
+- `R_sensitivity_betatest.R`: Evaluates the hypothesis testing procedure for idiosyncratic residual effects.
+- `R_sensitivity_gammatest.R`: Evaluates the hypothesis testing procedure for factor effects.
+
+### 3.4 Precomputed Simulation Results
+The `simulation/Results/` directory contains precomputed simulation results, including numerical results stored in CSV files and figures stored in PNG files. 
+  
+- `betacsv/`: Results associated with hypothesis testing for idiosyncratic residual effects.
+- `estimationcsv/`: Results associated with parameter estimation and prediction.
+- `gammacsv/`: Results associated with hypothesis testing for factor effects.
+
+These precomputed results are used as inputs by the figure- and table-generation scripts.
+
+### 3.5 Figures and Tables
+
+The `simulation/Fig_Tab_Code/` directory contains the R scripts for generating the figures and tables reported in the main manuscript and supplementary materials. The scripts are named according to their corresponding figure and table numbers, and some scripts generate multiple outputs. The complete mapping between scripts and their outputs is provided below.
+
+| Script | Output | Description |
+|---|---|---|
+| `Tab1.R` | Table 1 | Empirical rejection rates (size and power) of the proposed and FARM tests for \(\boldsymbol{\beta}\) under the main setting. |
+| `Fig1 and FigS1.R` | Figures 1 and S1 | Comparison of estimation errors under Gaussian (Figure 1) and uniform (Figure S1) noise. |
+| `Fig2 and FigS2.R` | Figures 2 and S2 | Comparison of prediction errors under Gaussian (Figure 2) and uniform (Figure S2) noise. |
+| `Fig3 and FigS3.R` | Figures 3 and S3 | Empirical rejection rates (size and power) of the proposed and IFRM tests for \(\boldsymbol{\beta}_k\)'s under Gaussian (Figure 3) and uniform (Figure S3) noise. |
+| `Fig4 and FigS4.R` | Figures 4 and S4 | Empirical rejection rates (size and power) of the proposed test for \(\boldsymbol{\gamma}_c\) and of the proposed and IFRM tests for \(\boldsymbol{\gamma}_{s,k}\)'s under Gaussian (Figure 4) and uniform (Figure S4) noise. |
+| `FigS5-S6,S8-S9.R` | Figures S5, S6, S8, and S9 | Comparison of estimation errors (Figures S5 and S8) and prediction errors (Figures S6 and S9) under Gaussian noise in the no-common-factor and only-common-factor settings, respectively. |
+| `FigS7.R` | Figure S7 | Empirical rejection rates (size and power) of the proposed and IFRM tests for \(\boldsymbol{\beta}_k\)'s under the no-common-factor setting. |
+| `FigS10 and FigS11.R` | Figures S10 and S11 | Comparison of estimation errors (Figure S10) and prediction errors (Figure S11) among the proposed method, joint estimation, and oracle procedures under the main setting. |
+| `FigS12, FigS13 and FigS14.R` | Figures S12, S13, and S14 | Empirical rejection rates (size and power) for \(\boldsymbol{\beta}_k\)'s, comparing the proposed method with joint estimation (Figure S12), the oracle-factor-number-based method (Figure S13), and the oracle method (Figure S14) under the main setting. |
+| `FigS15, FigS16 and FigS17.R` | Figures S15, S16, and S17 | Empirical rejection rates (size and power) for \(\boldsymbol{\gamma}_c\) and \(\boldsymbol{\gamma}_{s,k}\)'s, comparing the proposed method with joint estimation (Figure S15), the oracle-factor-number-based method (Figure S16), and the oracle method (Figure S17) under the main setting. |
+| `FigS18 and FigS19.R` | Figures S18 and S19 | Comparison of estimation errors (Figure S18) and prediction errors (Figure S19) under the weaker setting. |
+| `FigS20.R` | Figure S20 | Empirical rejection rates (size and power) of the proposed and IFRM tests for \(\boldsymbol{\beta}_k\)'s under the weaker setting. |
+| `FigS21.R` | Figure S21 | Empirical rejection rates (size and power) of the proposed test for \(\boldsymbol{\gamma}_c\) and of the proposed and IFRM tests for \(\boldsymbol{\gamma}_{s,k}\)'s under the weaker setting. |
+| `FigS22 and FigS23.R` | Figures S22 and S23 | Comparison of estimation errors (Figure S22) and prediction errors (Figure S23) under the lower-noise setting. |
+| `FigS24.R` | Figure S24 | Empirical rejection rates (size and power) of the proposed test for \(\boldsymbol{\beta}_k\)'s under the lower-noise setting. |
+| `FigS25.R` | Figure S25 | Empirical rejection rates (size and power) of the proposed test for \(\boldsymbol{\gamma}_c\) and of the proposed and IFRM tests for \(\boldsymbol{\gamma}_{s,k}\)'s under the lower-noise setting. |
+| `FigS26.R` | Figure S26 | Comparison of estimation errors under different specifications of the factor dimensions \(\boldsymbol{r}\). |
+| `FigS27.R` | Figure S27 | Comparison of prediction errors under different specifications of the factor dimensions \(\boldsymbol{r}\). |
+| `FigS28.R` | Figure S28 | Empirical rejection rates (size and power) of the proposed test and its variants with prespecified \(\boldsymbol{r}\) for \(\boldsymbol{\beta}_k\)'s under Gaussian noise and Gaussian factor loadings. |
+| `FigS29.R` | Figure S29 | Empirical rejection rates (size and power) of the proposed test and its variants with prespecified \(\boldsymbol{r}\) for \(\boldsymbol{\gamma}_c\) and \(\boldsymbol{\gamma}_{s,k}\)'s under Gaussian noise and Gaussian factor loadings. |
+| `TabS1.R` | Table S1 | Empirical rejection rates (size and power) of the proposed and FARM tests for \(\boldsymbol{\beta}\) under the only-common-factor setting. |
+| `TabS2.R` | Table S2 | Empirical rejection rates (size and power) of the proposed and alternative tests for \(\boldsymbol{\beta}\) under the main setting, comparing joint estimation and oracle procedures. |
+| `TabS3.R` | Table S3 | Empirical rejection rates (size and power) of the proposed and alternative tests for \(\boldsymbol{\beta}\) under the weaker setting. |
+| `TabS4.R` | Table S4 | Empirical rejection rates (size and power) of the proposed and alternative tests for \(\boldsymbol{\beta}\) under the lower-noise setting. |
+| `TabS5.R` | Table S5 | Empirical rejection rates (size and power) of the proposed test and its variants with prespecified \(\boldsymbol{r}\) for \(\boldsymbol{\beta}\) under Gaussian noise and Gaussian factor loadings. |
+ 
+## 4. Real Data Analysis
+
+The `realdata/` directory contains the scripts for the real data analyses, including full-sample analyses and resampling-based analyses. The corresponding datasets are stored in `Data/RealData/`, with raw and processed data organized separately.
+
+The real data analyses are based on two TCGA lung cancer cohorts: lung adenocarcinoma (LUAD) and lung squamous cell carcinoma (LUSC). Four types of molecular data are considered: mRNA expression, DNA methylation, copy number alteration (CNA), and protein expression. The clinical outcome is the prebronchodilator forced expiratory volume in one second (FEV1).
+
+### 4.1 Full-Sample Analysis
+
+The `realdata/Full_Sample_Analysis/` directory contains scripts for estimation and inference based on the full sample using the proposed method.
+
+- `Whole_Sample.R`: Performs model estimation and hypothesis testing using the processed real-data dataset and the proposed method.
+- `Fig5.R`: Generates Figure 5 in the main manuscript using the precomputed results stored in `realdata/Results/`.
+- `TabS6.R`: Generates Table S6 in the supplementary materials using the precomputed results stored in `realdata/Results/`.
+
+### 4.2 Resampling Analysis
+
+The `realdata/Resampling_Analysis/` directory contains scripts for evaluating prediction performance and the stability of the analysis results through resampling.
+
+- `Prediction_Stability.R`: Performs the resampling analysis using repeated random train-test splits with a training-to-test sample size ratio of 20:1 to evaluate prediction performance and the stability of the results. This script requires rerunning the resampling procedure and may be computationally intensive.
+- `averageError_and_jaccard.R`: Calculates the average prediction error and Jaccard indices based on the precomputed resampling results stored in `realdata/Results/`. It produces numerical results reported in the manuscript and does not require rerunning the resampling procedure.
+
+### 4.3 Precomputed Real-Data Results
+
+The `realdata/Results/` directory stores the precomputed results from the full-sample and resampling analyses. These results are used directly by `Fig5.R`, `TabS6.R`, and `averageError_and_jaccard.R` to generate the corresponding figures, tables, and numerical summaries without rerunning the computationally intensive analyses.
+
+## 5. Data Availability
+
+### 5.1 Data Sources
+
+The original LUAD and LUSC data are publicly available through [cBioPortal](https://www.cbioportal.org/). The corresponding TCGA studies are [LUAD](https://www.cbioportal.org/study/summary?id=luad_tcga) and [LUSC](https://www.cbioportal.org/study/summary?id=lusc_tcga).
+
+Due to file size limitations, the downloaded raw data files are not included in the submission package but are available from the GitHub repository or cBioPortal. To reproduce the preprocessing procedure, users can obtain the raw data for both studies and extract the files into the corresponding directories under `Data/RealData/RawData/`, organized into separate `luad_tcga/` and `lusc_tcga/` folders.
+
+### 5.2 Data Preprocessing
+
+The preprocessing script `processed_procedure.R` is provided in `Data/RealData/ProcessedData/`. After downloading and extracting the raw data into the directories specified in Section 5.1, users can run this script to reproduce the preprocessing steps, including extracting the clinical outcome, processing the molecular data, matching samples across data types, and constructing the final analysis dataset.
+
+The resulting processed dataset, `lung_data.RData`, used in the analyses is stored in `Data/RealData/ProcessedData/`.
+
+### 5.3 Processed Data Structure
+
+The processed real-data dataset is stored as a data frame named `Lung_df` in an RData file, combining the LUAD and LUSC cohorts. It contains 241 observations and 1,095 variables, including one clinical outcome and 1,094 molecular features from four data modalities.
+
+The variables are organized as follows:
+  
+  | Variable type (Number) | Description |
+  |---|---|
+  | `FEV1_PERCENT_REF_PREBRONCHOLIATOR` (1) |  prebronchodilator forced expiratory volume in one second (FEV1, clinical outcome) |
+  | mRNA expression (300) | Selected mRNA expression features |
+  | DNA methylation (300) | Selected DNA methylation features |
+  | Copy number alteration (CNA) (300) | Selected CNA features |
+  | Protein expression (194) | Selected protein expression features |
+  | **Total (1,095)** | |
+  
+  Each row corresponds to a TCGA sample, with sample identifiers provided as row names. The processed dataset serves as the input for the real-data analyses.
+
+   
+## 6. Reproducibility
+
+All file paths in the scripts are specified relative to the project root using the `here` package. To ensure that the paths are correctly resolved, open the `code_and_data` directory as an RStudio Project before running the scripts. No manual working-directory setting using `setwd()` is required.
+
+To reproduce the analyses, please follow the steps below:
+  
+  1. **Open the project.** Open `InferMultiModal_code_and_data.Rproj` in RStudio.
+
+2. **Install the required R packages.** Install the R packages required by the corresponding scripts.
+
+3. **Install the proposed-method package.** Install the `InferMultiModal` package from the local repository directory and load it before running the analysis scripts.
+
+4. **Reproduce the simulation experiments.** Run the scripts in `simulation/Replication_code/` under the corresponding simulation settings. These scripts perform parameter estimation, prediction, and hypothesis testing.
+
+5. **Generate simulation figures and tables.** Run the scripts in `simulation/Fig_Tab_Code/` to generate the corresponding figures and tables using the precomputed results in `simulation/Results/`. The simulation experiments do not need to be rerun to reproduce these outputs.
+
+6. **Prepare the real-data dataset.** IIf the processed dataset is not available, download the required raw data from the GitHub repository or cBioPortal and run `Data/RealData/ProcessedData/processed_procedure.R` to construct the analysis dataset.
+
+7. **Reproduce the full-sample real-data analysis.** Run `realdata/Full_Sample_Analysis/Whole_Sample.R` to perform estimation and hypothesis testing using the proposed method.
+
+8. **Reproduce the resampling analysis.** Run `realdata/Resampling_Analysis/Prediction_Stability.R` to conduct the computationally intensive resampling procedure. Alternatively, use the provided precomputed results to reproduce the numerical summaries without rerunning the resampling analysis.
+
+9. **Generate real-data figures, tables, and numerical summaries.** Run the following scripts:
+   - `realdata/Full_Sample_Analysis/Fig5.R`
+   - `realdata/Full_Sample_Analysis/TabS6.R`
+   - `realdata/Resampling_Analysis/averageError_and_jaccard.R`
+
+These scripts use the precomputed results stored in `realdata/Results/` and do not require rerunning the corresponding analyses.
+
+## References
+
+- Li, Q., & Li, L. (2022). Integrative factor regression and its inference for multimodal data. *Journal of the American Statistical Association*, 117(540), 2207–2221.
+
+- Fan, J., Lou, Z., & Yu, M. (2024). Are latent factor regression and sparse regression adequate? *Journal of the American Statistical Association*, 119(546), 1076–1088.
